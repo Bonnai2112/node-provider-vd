@@ -12,4 +12,8 @@ public record ClientPair(ElClient executionLayer, ClClient consensusLayer) {
     public static ClientPair besuTeku() {
         return new ClientPair(ElClient.BESU, ClClient.TEKU);
     }
+
+    public static ClientPair gethLighthouse() {
+        return new ClientPair(ElClient.GETH, ClClient.LIGHTHOUSE);
+    }
 }

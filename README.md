@@ -37,16 +37,37 @@ qui dépend des BC et porte le `main` Spring Boot.
 - JDK 25 (Temurin recommandé).
 - Node 22+ (cf. [frontend/.nvmrc](frontend/.nvmrc)).
 - pnpm 9+.
-- Docker (pour la phase ultérieure : Postgres, nœuds Besu, etc.).
+- Docker (Postgres pour l'app, Testcontainers pour les tests d'intégration).
+
+### Setup Docker
+
+Sur **Linux** (CI compris) : rien à faire, le daemon Docker est sur
+`/var/run/docker.sock`.
+
+Sur **macOS avec colima** : exporter le socket Docker pour Testcontainers
+(la détection auto des `DOCKER_HOST` n'est pas fiable) :
+
+```bash
+export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```
+
+`testcontainers.ryuk.disabled=true` est déjà configuré côté projet pour
+contourner un problème connu de port-forwarding colima sur le reaper.
 
 ## Commandes
 
 ### Backend
 
 ```bash
-./mvnw verify          # build + tests + spotless:check sur tous les modules
-./mvnw -pl app-bootstrap spring-boot:run
+docker compose -f docker/dev.yml up -d postgres   # DB locale
+./mvnw verify                                     # build + tests (unit + IT)
+./mvnw -pl app-bootstrap spring-boot:run          # démarre l'API sur :8080
 ```
+
+L'API expose :
+- `POST /api/v1/nodes` — provisionne un nœud (202 Accepted, `Location` header).
+- `GET  /api/v1/nodes/{id}` — récupère un nœud.
 
 ### Frontend
 

@@ -1,0 +1,88 @@
+### Variables (compatible REST Client / VS Code — IntelliJ HTTP Client OK aussi)
+@host = http://localhost:8080
+@ownerId = 11111111-1111-1111-1111-111111111111
+@unknownNodeId = 00000000-0000-0000-0000-000000000000
+
+###
+# Scénario 1 — Création nominale → 202 Accepted, Location: /api/v1/nodes/{id}
+# @name createNode
+POST {{host}}/api/v1/nodes
+Content-Type: application/json
+
+{
+  "ownerId": "{{ownerId}}",
+  "network": "HOODI",
+  "executionLayer": "GETH",
+  "consensusLayer": "LIGHTHOUSE"
+}
+
+###
+# Scénario 2 — GET sur le node créé (réutilise l'id renvoyé au 1)
+GET {{host}}/api/v1/nodes/{{createNode.response.body.id}}
+Accept: application/json
+
+###
+# Scénario 3 — GET sur id inconnu → 404 application/problem+json
+GET {{host}}/api/v1/nodes/{{unknownNodeId}}
+Accept: application/json
+
+###
+# Scénario 4 — GET avec UUID malformé → 400
+GET {{host}}/api/v1/nodes/not-a-uuid
+Accept: application/json
+
+###
+# Scénario 5 — Validation: corps vide → 400 (NotNull/NotBlank)
+POST {{host}}/api/v1/nodes
+Content-Type: application/json
+
+{}
+
+###
+# Scénario 6a — Network invalide → 400 (IllegalArgumentException)
+POST {{host}}/api/v1/nodes
+Content-Type: application/json
+
+{
+  "ownerId": "{{ownerId}}",
+  "network": "MAINNET",
+  "executionLayer": "BESU",
+  "consensusLayer": "TEKU"
+}
+
+###
+# Scénario 6b — Execution layer invalide → 400
+POST {{host}}/api/v1/nodes
+Content-Type: application/json
+
+{
+  "ownerId": "{{ownerId}}",
+  "network": "HOODI",
+  "executionLayer": "GETH",
+  "consensusLayer": "TEKU"
+}
+
+###
+# Scénario 6c — Consensus layer invalide → 400
+POST {{host}}/api/v1/nodes
+Content-Type: application/json
+
+{
+  "ownerId": "{{ownerId}}",
+  "network": "SEPOLIA",
+  "executionLayer": "BESU",
+  "consensusLayer": "LIGHTHOUSE"
+}
+
+###
+# Scénario 7a — Pas de Content-Type → 415
+POST {{host}}/api/v1/nodes
+
+pas du json
+
+###
+# Scénario 7b — JSON malformé → 400
+POST {{host}}/api/v1/nodes
+Content-Type: application/json
+
+{ "ownerId": "{{ownerId}}",

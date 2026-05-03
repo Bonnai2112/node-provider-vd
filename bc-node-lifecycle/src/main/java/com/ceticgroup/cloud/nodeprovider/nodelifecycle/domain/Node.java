@@ -34,6 +34,13 @@ public final class Node {
         return node;
     }
 
+    public static Node restore(
+            NodeId id, OwnerId owner, Network network, ClientPair clientPair, NodeStatus status) {
+        Node node = new Node(id, owner, network, clientPair);
+        node.status = Objects.requireNonNull(status, "status");
+        return node;
+    }
+
     public void startProvisioning() {
         if (!(status instanceof NodeStatus.Requested)) {
             throw IllegalNodeTransitionException.from(status, "startProvisioning");

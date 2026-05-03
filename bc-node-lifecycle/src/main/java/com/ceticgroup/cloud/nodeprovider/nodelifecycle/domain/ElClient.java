@@ -1,5 +1,12 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain;
 
 public enum ElClient {
-    BESU
+    BESU,
+    GETH,
+    NETHERMIND,
+    ERIGON;
+
+    public boolean isValidator() {
+        return false;
+    }
 }

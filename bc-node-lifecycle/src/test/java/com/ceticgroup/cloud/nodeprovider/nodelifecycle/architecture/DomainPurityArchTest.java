@@ -32,14 +32,40 @@ class DomainPurityArchTest {
     }
 
     @Test
-    void domain_must_not_depend_on_jakarta_persistence() {
+    void domain_must_not_depend_on_jakarta() {
         ArchRule rule =
                 noClasses()
                         .that()
                         .resideInAPackage(DOMAIN_PACKAGE)
                         .should()
                         .dependOnClassesThat()
-                        .resideInAnyPackage("jakarta.persistence..");
+                        .resideInAnyPackage("jakarta..");
+
+        rule.check(PRODUCTION_CLASSES);
+    }
+
+    @Test
+    void domain_must_not_depend_on_jackson() {
+        ArchRule rule =
+                noClasses()
+                        .that()
+                        .resideInAPackage(DOMAIN_PACKAGE)
+                        .should()
+                        .dependOnClassesThat()
+                        .resideInAnyPackage("com.fasterxml.jackson..");
+
+        rule.check(PRODUCTION_CLASSES);
+    }
+
+    @Test
+    void domain_must_not_depend_on_dockerjava() {
+        ArchRule rule =
+                noClasses()
+                        .that()
+                        .resideInAPackage(DOMAIN_PACKAGE)
+                        .should()
+                        .dependOnClassesThat()
+                        .resideInAnyPackage("com.github.dockerjava..");
 
         rule.check(PRODUCTION_CLASSES);
     }

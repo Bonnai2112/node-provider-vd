@@ -1,5 +1,13 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain;
 
 public enum ClClient {
-    TEKU
+    TEKU,
+    LIGHTHOUSE,
+    PRYSM,
+    NIMBUS,
+    LODESTAR;
+
+    public boolean isValidator() {
+        return false;
+    }
 }

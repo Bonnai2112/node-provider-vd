@@ -19,8 +19,9 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
+            <groupId>com.cetic-group.cloud.node-provider</groupId>
+            <artifactId>bc-node-lifecycle</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <dependency>

@@ -1,0 +1,28 @@
+{
+  "name": "node-provider-frontend",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.1",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "typecheck": "nuxt typecheck"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.12.2",
+    "@pinia/nuxt": "^0.5.5",
+    "nuxt": "^3.14.0",
+    "pinia": "^2.2.6",
+    "typescript": "^5.6.3",
+    "vue": "^3.5.13",
+    "vue-router": "^4.4.5",
+    "vue-tsc": "^2.1.10"
+  }
+}

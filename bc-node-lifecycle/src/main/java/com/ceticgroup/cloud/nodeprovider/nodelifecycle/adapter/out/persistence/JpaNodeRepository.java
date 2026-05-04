@@ -2,6 +2,7 @@ package com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.persistence;
 
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClientPair;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.DeploymentRef;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ElClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Endpoint;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Network;
@@ -39,6 +40,13 @@ class JpaNodeRepository implements NodeRepository {
         return jpa.findByOwnerId(owner.value()).stream().map(JpaNodeRepository::toDomain).toList();
     }
 
+    @Override
+    public List<Node> findNonTerminal() {
+        return jpa.findByStatusKindNotIn(List.of("TERMINATED", "FAILED")).stream()
+                .map(JpaNodeRepository::toDomain)
+                .toList();
+    }
+
     private static NodeJpaEntity toEntity(Node node) {
         NodeStatus status = node.status();
         String kind = statusKind(status);
@@ -50,6 +58,7 @@ class JpaNodeRepository implements NodeRepository {
                     case NodeStatus.Failed f -> f.reason();
                     default -> null;
                 };
+        String deploymentRef = node.deploymentRef() == null ? null : node.deploymentRef().payload();
 
         return new NodeJpaEntity(
                 node.id().value(),
@@ -59,7 +68,8 @@ class JpaNodeRepository implements NodeRepository {
                 node.clientPair().consensusLayer().name(),
                 kind,
                 endpointUri,
-                reason);
+                reason,
+                deploymentRef);
     }
 
     private static Node toDomain(NodeJpaEntity entity) {
@@ -67,12 +77,17 @@ class JpaNodeRepository implements NodeRepository {
                 new ClientPair(
                         ElClient.valueOf(entity.getElClient()),
                         ClClient.valueOf(entity.getClClient()));
+        DeploymentRef deploymentRef =
+                entity.getDeploymentRef() == null
+                        ? null
+                        : new DeploymentRef(entity.getDeploymentRef());
         return Node.restore(
                 new NodeId(entity.getId()),
                 new OwnerId(entity.getOwnerId()),
                 Network.valueOf(entity.getNetwork()),
                 clientPair,
-                toStatus(entity));
+                toStatus(entity),
+                deploymentRef);
     }
 
     private static String statusKind(NodeStatus status) {

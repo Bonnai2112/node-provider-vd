@@ -19,6 +19,7 @@ public final class Node {
     private final List<NodeDomainEvent> pendingEvents = new ArrayList<>();
 
     private NodeStatus status;
+    private DeploymentRef deploymentRef;
 
     private Node(NodeId id, OwnerId owner, Network network, ClientPair clientPair) {
         this.id = Objects.requireNonNull(id, "id");
@@ -35,16 +36,24 @@ public final class Node {
     }
 
     public static Node restore(
-            NodeId id, OwnerId owner, Network network, ClientPair clientPair, NodeStatus status) {
+            NodeId id,
+            OwnerId owner,
+            Network network,
+            ClientPair clientPair,
+            NodeStatus status,
+            DeploymentRef deploymentRef) {
         Node node = new Node(id, owner, network, clientPair);
         node.status = Objects.requireNonNull(status, "status");
+        node.deploymentRef = deploymentRef;
         return node;
     }
 
-    public void startProvisioning() {
+    public void startProvisioning(DeploymentRef ref) {
+        Objects.requireNonNull(ref, "deploymentRef");
         if (!(status instanceof NodeStatus.Requested)) {
             throw IllegalNodeTransitionException.from(status, "startProvisioning");
         }
+        this.deploymentRef = ref;
         status = new NodeStatus.Provisioning();
         pendingEvents.add(new NodeProvisioningStarted(id, Instant.now()));
     }
@@ -116,6 +125,10 @@ public final class Node {
 
     public NodeStatus status() {
         return status;
+    }
+
+    public DeploymentRef deploymentRef() {
+        return deploymentRef;
     }
 
     public List<NodeDomainEvent> pullEvents() {

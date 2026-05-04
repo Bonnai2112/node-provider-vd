@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "nodes")
@@ -35,6 +37,10 @@ class NodeJpaEntity {
     @Column(name = "status_reason")
     private String statusReason;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "deployment_ref", columnDefinition = "jsonb")
+    private String deploymentRef;
+
     protected NodeJpaEntity() {}
 
     NodeJpaEntity(
@@ -45,7 +51,8 @@ class NodeJpaEntity {
             String clClient,
             String statusKind,
             String endpointUri,
-            String statusReason) {
+            String statusReason,
+            String deploymentRef) {
         this.id = id;
         this.ownerId = ownerId;
         this.network = network;
@@ -54,6 +61,7 @@ class NodeJpaEntity {
         this.statusKind = statusKind;
         this.endpointUri = endpointUri;
         this.statusReason = statusReason;
+        this.deploymentRef = deploymentRef;
     }
 
     UUID getId() {
@@ -86,5 +94,9 @@ class NodeJpaEntity {
 
     String getStatusReason() {
         return statusReason;
+    }
+
+    String getDeploymentRef() {
+        return deploymentRef;
     }
 }

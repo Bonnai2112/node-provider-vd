@@ -13,4 +13,6 @@ public interface NodeRepository {
     Optional<Node> findById(NodeId id);
 
     List<Node> findByOwner(OwnerId owner);
+
+    List<Node> findNonTerminal();
 }

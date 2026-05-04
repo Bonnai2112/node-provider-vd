@@ -3,6 +3,7 @@ package com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClientPair;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.DeploymentRef;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Endpoint;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Network;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Node;
@@ -76,7 +77,8 @@ class JpaNodeRepositoryIT {
                         new OwnerId(UUID.randomUUID()),
                         Network.SEPOLIA,
                         ClientPair.besuTeku(),
-                        new NodeStatus.Ready(new Endpoint(URI.create("https://rpc.example.com"))));
+                        new NodeStatus.Ready(new Endpoint(URI.create("https://rpc.example.com"))),
+                        null);
 
         repository.save(node);
 
@@ -90,6 +92,29 @@ class JpaNodeRepositoryIT {
     }
 
     @Test
+    void save_should_persistDeploymentRefAsJson_andRoundTrip() {
+        NodeId id = new NodeId(UUID.randomUUID());
+        String json =
+                "{\"workdir\":\"/tmp/eth-docker\",\"composeProjectName\":\"node-deadbeef\","
+                        + "\"ports\":{\"elRpcPort\":30100}}";
+        Node node =
+                Node.restore(
+                        id,
+                        new OwnerId(UUID.randomUUID()),
+                        Network.HOODI,
+                        ClientPair.besuTeku(),
+                        new NodeStatus.Provisioning(),
+                        new DeploymentRef(json));
+
+        repository.save(node);
+
+        Node loaded = repository.findById(id).orElseThrow();
+        assertThat(loaded.deploymentRef()).isNotNull();
+        assertThat(loaded.deploymentRef().payload()).contains("\"workdir\"");
+        assertThat(loaded.deploymentRef().payload()).contains("node-deadbeef");
+    }
+
+    @Test
     void save_should_persistFailedStatusWithReason() {
         NodeId id = new NodeId(UUID.randomUUID());
         Node node =
@@ -98,7 +123,8 @@ class JpaNodeRepositoryIT {
                         new OwnerId(UUID.randomUUID()),
                         Network.HOODI,
                         ClientPair.besuTeku(),
-                        new NodeStatus.Failed("docker pull timeout"));
+                        new NodeStatus.Failed("docker pull timeout"),
+                        null);
 
         repository.save(node);
 

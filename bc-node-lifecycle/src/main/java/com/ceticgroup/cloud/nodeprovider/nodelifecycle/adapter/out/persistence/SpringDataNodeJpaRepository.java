@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 interface SpringDataNodeJpaRepository extends JpaRepository<NodeJpaEntity, UUID> {
 
     List<NodeJpaEntity> findByOwnerId(UUID ownerId);
+
+    List<NodeJpaEntity> findByStatusKindNotIn(List<String> excludedStatusKinds);
 }

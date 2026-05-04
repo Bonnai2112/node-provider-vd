@@ -1,11 +1,13 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain;
 
 import java.util.Objects;
-import java.util.UUID;
 
-public record DeploymentRef(UUID id) {
+public record DeploymentRef(String payload) {
 
     public DeploymentRef {
-        Objects.requireNonNull(id, "id");
+        Objects.requireNonNull(payload, "payload");
+        if (payload.isBlank()) {
+            throw new IllegalArgumentException("payload must not be blank");
+        }
     }
 }

@@ -21,6 +21,7 @@ class NodeTest {
     private static final Network NETWORK = Network.HOODI;
     private static final ClientPair CLIENT_PAIR = ClientPair.besuTeku();
     private static final Endpoint ENDPOINT = new Endpoint(URI.create("https://rpc.example.com"));
+    private static final DeploymentRef DEPLOYMENT_REF = new DeploymentRef("{\"k\":\"v\"}");
 
     @Nested
     class Request {
@@ -87,7 +88,7 @@ class NodeTest {
         void startProvisioning_should_transitionToProvisioning_when_inRequested() {
             Node node = newRequestedNode();
 
-            node.startProvisioning();
+            node.startProvisioning(DEPLOYMENT_REF);
 
             assertThat(node.status()).isInstanceOf(NodeStatus.Provisioning.class);
         }
@@ -97,7 +98,7 @@ class NodeTest {
             Node node = newRequestedNode();
             node.pullEvents();
 
-            node.startProvisioning();
+            node.startProvisioning(DEPLOYMENT_REF);
 
             assertThat(node.pullEvents())
                     .singleElement()
@@ -113,7 +114,7 @@ class NodeTest {
         void startProvisioning_should_throw_when_alreadyProvisioning() {
             Node node = nodeInProvisioning();
 
-            assertThatThrownBy(node::startProvisioning)
+            assertThatThrownBy(() -> node.startProvisioning(DEPLOYMENT_REF))
                     .isInstanceOf(IllegalNodeTransitionException.class);
         }
 
@@ -121,7 +122,7 @@ class NodeTest {
         void startProvisioning_should_throw_when_inReady() {
             Node node = nodeInReady();
 
-            assertThatThrownBy(node::startProvisioning)
+            assertThatThrownBy(() -> node.startProvisioning(DEPLOYMENT_REF))
                     .isInstanceOf(IllegalNodeTransitionException.class);
         }
     }
@@ -498,7 +499,7 @@ class NodeTest {
         @Test
         void pullEvents_should_returnEventsInOrder_alongFullHappyPath() {
             Node node = Node.request(NODE_ID, OWNER_ID, NETWORK, CLIENT_PAIR);
-            node.startProvisioning();
+            node.startProvisioning(DEPLOYMENT_REF);
             node.markSyncing();
             node.markReady(ENDPOINT);
             node.markDegraded("flaky");
@@ -517,7 +518,7 @@ class NodeTest {
 
     private static Node nodeInProvisioning() {
         Node n = newRequestedNode();
-        n.startProvisioning();
+        n.startProvisioning(DEPLOYMENT_REF);
         return n;
     }
 

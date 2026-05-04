@@ -109,7 +109,8 @@ class NodeControllerIT {
                         Network.HOODI,
                         ClientPair.besuTeku(),
                         new com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeStatus.Ready(
-                                new Endpoint(URI.create("https://rpc.example.com"))));
+                                new Endpoint(URI.create("https://rpc.example.com"))),
+                        null);
         given(getNodeUseCase.getById(new NodeId(id))).willReturn(node);
 
         mockMvc.perform(get("/api/v1/nodes/{id}", id))

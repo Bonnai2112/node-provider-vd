@@ -3,23 +3,27 @@ package com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class DeploymentRefTest {
 
     @Test
-    void constructor_should_throw_when_idIsNull() {
-        assertThatThrownBy(() -> new DeploymentRef(null))
-                .isInstanceOf(NullPointerException.class);
+    void constructor_should_throw_when_payloadIsNull() {
+        assertThatThrownBy(() -> new DeploymentRef(null)).isInstanceOf(NullPointerException.class);
     }
 
     @Test
-    void constructor_should_exposeId_when_idIsProvided() {
-        UUID id = UUID.randomUUID();
+    void constructor_should_throw_when_payloadIsBlank() {
+        assertThatThrownBy(() -> new DeploymentRef("  "))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 
-        DeploymentRef ref = new DeploymentRef(id);
+    @Test
+    void constructor_should_exposePayload_when_payloadIsProvided() {
+        String payload = "{\"workdir\":\"/tmp/eth-docker\"}";
 
-        assertThat(ref.id()).isEqualTo(id);
+        DeploymentRef ref = new DeploymentRef(payload);
+
+        assertThat(ref.payload()).isEqualTo(payload);
     }
 }

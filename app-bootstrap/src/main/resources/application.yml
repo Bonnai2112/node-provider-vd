@@ -16,6 +16,13 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+app:
+  platform:
+    eth-docker:
+      root-dir: ${PLATFORM_ROOT:/tmp/platform/nodes}
+      cache-dir: ${PLATFORM_CACHE:/tmp/platform/cache}
+      sha-cache-file: ${PLATFORM_SHA_CACHE:/tmp/platform/cache/eth-docker-sha}
+
 logging:
   level:
     com.ceticgroup.cloud.nodeprovider: INFO

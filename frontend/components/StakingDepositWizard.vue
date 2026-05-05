@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useNodesStore } from '~/stores/nodes';
 import type { Network } from '~/types/node';
 
 const props = defineProps<{
@@ -8,25 +7,11 @@ const props = defineProps<{
     keysCount: number;
 }>();
 
-const store = useNodesStore();
-
 const launchpadUrl = computed<string>(() =>
     props.network === 'HOODI'
         ? 'https://hoodi.launchpad.ethereum.org/'
         : 'https://sepolia.launchpad.ethereum.org/',
 );
-
-const explorerBase = computed<string>(() =>
-    props.network === 'HOODI'
-        ? 'https://hoodi.beaconcha.in'
-        : 'https://sepolia.beaconcha.in',
-);
-
-const explorerUrl = computed<string>(() => {
-    const keys = store.keysFor(props.nodeId);
-    const first = keys[0];
-    return first ? `${explorerBase.value}/validator/${first.pubkey}` : explorerBase.value;
-});
 
 const totalEth = computed<number>(() => props.keysCount * 32);
 </script>
@@ -81,7 +66,7 @@ const totalEth = computed<number>(() => props.keysCount * 32);
                 </div>
             </dl>
 
-            <div class="mt-6 flex flex-wrap items-center gap-3">
+            <div class="mt-6">
                 <a
                     :href="launchpadUrl"
                     target="_blank"
@@ -90,15 +75,6 @@ const totalEth = computed<number>(() => props.keysCount * 32);
                     data-testid="launchpad-link"
                 >
                     Ouvrir le launchpad ↗
-                </a>
-                <a
-                    :href="explorerUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    data-testid="explorer-link"
-                >
-                    Suivre sur beaconcha.in ↗
                 </a>
             </div>
         </template>

@@ -235,6 +235,7 @@ function formatRelative(iso: string | null): string {
 
             <ValidatorKeysSection
                 :node-id="node.id"
+                :network="node.network"
                 :enabled="node.options.validator"
             />
 

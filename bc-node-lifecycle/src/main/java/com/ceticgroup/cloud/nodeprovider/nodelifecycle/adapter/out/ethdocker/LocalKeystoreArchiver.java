@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -65,6 +66,139 @@ public class LocalKeystoreArchiver implements ValidatorKeyArchiverPort {
     private static boolean isKeystoreFile(Path p) {
         String name = p.getFileName().toString();
         return name.startsWith("keystore-") && name.endsWith(".json");
+    }
+
+    private static boolean isDepositDataFile(Path p) {
+        String name = p.getFileName().toString();
+        return name.startsWith("deposit_data-") && name.endsWith(".json");
+    }
+
+    @Override
+    public byte[] depositData(DeploymentRef ref) {
+        Objects.requireNonNull(ref, "ref");
+        Path workdir = workdirOf(ref);
+        Path keystoreDir = workdir.resolve(VALIDATOR_KEYS_REL);
+        if (!Files.isDirectory(keystoreDir)) {
+            throw new IllegalStateException(
+                    "no validator_keys directory at " + keystoreDir + "; nothing to archive");
+        }
+
+        try {
+            List<Path> depositFiles;
+            try (Stream<Path> walk = Files.list(keystoreDir)) {
+                depositFiles =
+                        walk.filter(Files::isRegularFile)
+                                .filter(LocalKeystoreArchiver::isDepositDataFile)
+                                .sorted(Comparator.comparing(Path::getFileName))
+                                .toList();
+            }
+            if (depositFiles.isEmpty()) {
+                throw new IllegalStateException(
+                        "no deposit_data-*.json files found in " + keystoreDir);
+            }
+            com.fasterxml.jackson.databind.node.ArrayNode merged = mapper.createArrayNode();
+            for (Path file : depositFiles) {
+                JsonNode parsed = mapper.readTree(Files.readString(file, StandardCharsets.UTF_8));
+                if (!parsed.isArray()) {
+                    throw new IllegalStateException(
+                            "deposit_data file " + file.getFileName() + " is not a JSON array");
+                }
+                parsed.forEach(merged::add);
+            }
+            return mapper.writeValueAsBytes(merged);
+        } catch (IOException e) {
+            throw new IllegalStateException("failed to read deposit_data files", e);
+        }
+    }
+
+    @Override
+    public byte[] keystoreFor(DeploymentRef ref, String pubkey) {
+        Objects.requireNonNull(ref, "ref");
+        Objects.requireNonNull(pubkey, "pubkey");
+        String needle = normalizePubkey(pubkey);
+        Path keystoreDir = validatorKeysDir(ref);
+
+        try {
+            List<Path> keystores;
+            try (Stream<Path> walk = Files.list(keystoreDir)) {
+                keystores =
+                        walk.filter(Files::isRegularFile)
+                                .filter(LocalKeystoreArchiver::isKeystoreFile)
+                                .toList();
+            }
+            for (Path file : keystores) {
+                byte[] bytes = Files.readAllBytes(file);
+                JsonNode parsed = mapper.readTree(bytes);
+                JsonNode pk = parsed.get("pubkey");
+                if (pk != null && pk.isTextual() && normalizePubkey(pk.asText()).equals(needle)) {
+                    return bytes;
+                }
+            }
+            throw new IllegalStateException("no keystore matching pubkey " + pubkey);
+        } catch (IOException e) {
+            throw new IllegalStateException("failed to read keystores", e);
+        }
+    }
+
+    @Override
+    public byte[] depositDataFor(DeploymentRef ref, String pubkey) {
+        Objects.requireNonNull(ref, "ref");
+        Objects.requireNonNull(pubkey, "pubkey");
+        String needle = normalizePubkey(pubkey);
+        Path keystoreDir = validatorKeysDir(ref);
+
+        try {
+            List<Path> depositFiles;
+            try (Stream<Path> walk = Files.list(keystoreDir)) {
+                depositFiles =
+                        walk.filter(Files::isRegularFile)
+                                .filter(LocalKeystoreArchiver::isDepositDataFile)
+                                .sorted(Comparator.comparing(Path::getFileName))
+                                .toList();
+            }
+            if (depositFiles.isEmpty()) {
+                throw new IllegalStateException(
+                        "no deposit_data-*.json files found in " + keystoreDir);
+            }
+            for (Path file : depositFiles) {
+                JsonNode parsed = mapper.readTree(Files.readString(file, StandardCharsets.UTF_8));
+                if (!parsed.isArray()) {
+                    continue;
+                }
+                for (JsonNode entry : parsed) {
+                    JsonNode pk = entry.get("pubkey");
+                    if (pk != null
+                            && pk.isTextual()
+                            && normalizePubkey(pk.asText()).equals(needle)) {
+                        com.fasterxml.jackson.databind.node.ArrayNode singleton =
+                                mapper.createArrayNode();
+                        singleton.add(entry);
+                        return mapper.writeValueAsBytes(singleton);
+                    }
+                }
+            }
+            throw new IllegalStateException("no deposit_data entry matching pubkey " + pubkey);
+        } catch (IOException e) {
+            throw new IllegalStateException("failed to read deposit_data files", e);
+        }
+    }
+
+    private Path validatorKeysDir(DeploymentRef ref) {
+        Path workdir = workdirOf(ref);
+        Path keystoreDir = workdir.resolve(VALIDATOR_KEYS_REL);
+        if (!Files.isDirectory(keystoreDir)) {
+            throw new IllegalStateException(
+                    "no validator_keys directory at " + keystoreDir + "; nothing to read");
+        }
+        return keystoreDir;
+    }
+
+    private static String normalizePubkey(String pubkey) {
+        String s = pubkey.trim();
+        if (s.startsWith("0x") || s.startsWith("0X")) {
+            s = s.substring(2);
+        }
+        return s.toLowerCase(java.util.Locale.ROOT);
     }
 
     private Path workdirOf(DeploymentRef ref) {

@@ -35,6 +35,32 @@
   - Persistance : table `validator_keys(id, node_id, pubkey UNIQUE,
     imported_at)` (cascade depuis `nodes`).
 
+## Décisions à arbitrer
+
+- **Génération des clés validator** : aujourd'hui via
+  `ghcr.io/ethstaker/ethstaker-deposit-cli` orchestré en sous-processus
+  Docker (cf. `DepositCliKeyGenerator`). Le coût scrypt EIP-2335
+  (`n=2^18`) impose ~1-5 s par clé, plus le pull image et le démarrage
+  container — total ~1-2 min pour 32 validators, et l'appel HTTP est
+  bloquant. Outil officiel/audité par l'EF, c'est le seul qui produit
+  un `deposit_data.json` directement consommable par le launchpad.
+  Options à trancher si on veut améliorer l'UX :
+  - **(1)** Garder deposit-cli, rendre l'appel **async** (job +
+    polling côté UI) et pré-pull l'image au boot. ~2 jours, surface
+    crypto inchangée.
+  - **(2)** **Génération côté navigateur** (`@chainsafe/bls-keystore`,
+    `@chainsafe/bls`, `bip39`). Mnemonic + password ne quittent jamais
+    le navigateur, le backend reçoit uniquement les pubkeys + le
+    `deposit_data` signé. ~3-4 jours, meilleur modèle de sécurité.
+    Préférée à moyen terme.
+  - **(3)** BLS Java natif (`tech.pegasys.teku:bls` + EIP-2335 fait
+    main). Rapide mais grosse surface d'audit, à maintenir avec les
+    updates de spec (Pectra, etc.). Déconseillé sur ce projet.
+  - **(4)** Retirer `POST /validator-keys/generate`, ne garder que
+    `/import`. L'opérateur génère ses clés en local avec `wagyu` ou
+    `staking-deposit-cli`. Le plus défensif côté code mais moins
+    user-friendly.
+
 ## Suivi
 
 - README de référence : [bc-node-lifecycle/README.md](bc-node-lifecycle/README.md).

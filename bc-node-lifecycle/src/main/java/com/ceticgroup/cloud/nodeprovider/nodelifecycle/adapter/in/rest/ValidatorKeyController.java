@@ -73,6 +73,58 @@ class ValidatorKeyController {
                 .body(zip);
     }
 
+    @GetMapping("/deposit-data")
+    ResponseEntity<byte[]> depositData(
+            @RequestHeader(OWNER_HEADER) UUID ownerId, @PathVariable UUID id) {
+        byte[] json = downloadUseCase.downloadDepositData(new NodeId(id), new OwnerId(ownerId));
+        String filename = "deposit_data-" + id + ".json";
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + filename + "\"")
+                .body(json);
+    }
+
+    @GetMapping("/{pubkey}/keystore")
+    ResponseEntity<byte[]> keystoreFor(
+            @RequestHeader(OWNER_HEADER) UUID ownerId,
+            @PathVariable UUID id,
+            @PathVariable String pubkey) {
+        byte[] json =
+                downloadUseCase.downloadKeystoreFor(new NodeId(id), new OwnerId(ownerId), pubkey);
+        String filename = "keystore-" + shortPubkey(pubkey) + ".json";
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + filename + "\"")
+                .body(json);
+    }
+
+    @GetMapping("/{pubkey}/deposit-data")
+    ResponseEntity<byte[]> depositDataFor(
+            @RequestHeader(OWNER_HEADER) UUID ownerId,
+            @PathVariable UUID id,
+            @PathVariable String pubkey) {
+        byte[] json =
+                downloadUseCase.downloadDepositDataFor(
+                        new NodeId(id), new OwnerId(ownerId), pubkey);
+        String filename = "deposit_data-" + shortPubkey(pubkey) + ".json";
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + filename + "\"")
+                .body(json);
+    }
+
+    private static String shortPubkey(String pubkey) {
+        String s =
+                pubkey.startsWith("0x") || pubkey.startsWith("0X") ? pubkey.substring(2) : pubkey;
+        return s.length() > 12 ? s.substring(0, 12) : s;
+    }
+
     @PostMapping("/generate")
     GenerateValidatorKeysResponse generate(
             @RequestHeader(OWNER_HEADER) UUID ownerId,

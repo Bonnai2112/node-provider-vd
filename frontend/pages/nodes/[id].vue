@@ -237,6 +237,13 @@ function formatRelative(iso: string | null): string {
                 :node-id="node.id"
                 :enabled="node.options.validator"
             />
+
+            <StakingDepositWizard
+                v-if="node.options.validator"
+                :node-id="node.id"
+                :network="node.network"
+                :keys-count="store.keysFor(node.id).length"
+            />
         </template>
 
         <div v-else class="text-sm text-slate-500">Chargement…</div>

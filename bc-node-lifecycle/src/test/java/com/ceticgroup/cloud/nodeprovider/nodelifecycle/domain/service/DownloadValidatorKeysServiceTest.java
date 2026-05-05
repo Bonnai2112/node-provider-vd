@@ -80,6 +80,117 @@ class DownloadValidatorKeysServiceTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+    @Test
+    void downloadDepositData_should_returnJsonBytes_when_ownerMatchesAndValidatorEnabled() {
+        Node node = nodeWith(true, REF);
+        when(nodes.findById(NODE_ID)).thenReturn(Optional.of(node));
+        byte[] json = "[{\"pubkey\":\"a\"}]".getBytes();
+        when(archiver.depositData(REF)).thenReturn(json);
+        DownloadValidatorKeysService service = new DownloadValidatorKeysService(nodes, archiver);
+
+        byte[] result = service.downloadDepositData(NODE_ID, OWNER);
+
+        assertThat(result).isEqualTo(json);
+    }
+
+    @Test
+    void downloadDepositData_should_throwNotFound_when_ownerMismatch() {
+        Node node = nodeWith(true, REF);
+        when(nodes.findById(NODE_ID)).thenReturn(Optional.of(node));
+        DownloadValidatorKeysService service = new DownloadValidatorKeysService(nodes, archiver);
+
+        assertThatThrownBy(
+                        () -> service.downloadDepositData(NODE_ID, new OwnerId(UUID.randomUUID())))
+                .isInstanceOf(NodeNotFoundException.class);
+        then(archiver).should(never()).depositData(any());
+    }
+
+    @Test
+    void downloadDepositData_should_throw_when_validatorDisabled() {
+        Node node = nodeWith(false, REF);
+        when(nodes.findById(NODE_ID)).thenReturn(Optional.of(node));
+        DownloadValidatorKeysService service = new DownloadValidatorKeysService(nodes, archiver);
+
+        assertThatThrownBy(() -> service.downloadDepositData(NODE_ID, OWNER))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("validator");
+    }
+
+    @Test
+    void downloadDepositData_should_throw_when_noDeploymentYet() {
+        Node node = nodeWith(true, null);
+        when(nodes.findById(NODE_ID)).thenReturn(Optional.of(node));
+        DownloadValidatorKeysService service = new DownloadValidatorKeysService(nodes, archiver);
+
+        assertThatThrownBy(() -> service.downloadDepositData(NODE_ID, OWNER))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void downloadKeystoreFor_should_returnKeystoreBytes_when_ownerMatchesAndValidatorEnabled() {
+        Node node = nodeWith(true, REF);
+        when(nodes.findById(NODE_ID)).thenReturn(Optional.of(node));
+        byte[] bytes = "{\"pubkey\":\"abc\"}".getBytes();
+        when(archiver.keystoreFor(REF, "0xabc")).thenReturn(bytes);
+        DownloadValidatorKeysService service = new DownloadValidatorKeysService(nodes, archiver);
+
+        byte[] result = service.downloadKeystoreFor(NODE_ID, OWNER, "0xabc");
+
+        assertThat(result).isEqualTo(bytes);
+    }
+
+    @Test
+    void downloadKeystoreFor_should_throwNotFound_when_ownerMismatch() {
+        Node node = nodeWith(true, REF);
+        when(nodes.findById(NODE_ID)).thenReturn(Optional.of(node));
+        DownloadValidatorKeysService service = new DownloadValidatorKeysService(nodes, archiver);
+
+        assertThatThrownBy(
+                        () ->
+                                service.downloadKeystoreFor(
+                                        NODE_ID, new OwnerId(UUID.randomUUID()), "0xabc"))
+                .isInstanceOf(NodeNotFoundException.class);
+        then(archiver).should(never()).keystoreFor(any(), any());
+    }
+
+    @Test
+    void downloadKeystoreFor_should_throw_when_validatorDisabled() {
+        Node node = nodeWith(false, REF);
+        when(nodes.findById(NODE_ID)).thenReturn(Optional.of(node));
+        DownloadValidatorKeysService service = new DownloadValidatorKeysService(nodes, archiver);
+
+        assertThatThrownBy(() -> service.downloadKeystoreFor(NODE_ID, OWNER, "0xabc"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("validator");
+    }
+
+    @Test
+    void downloadDepositDataFor_should_returnEntryBytes_when_ownerMatchesAndValidatorEnabled() {
+        Node node = nodeWith(true, REF);
+        when(nodes.findById(NODE_ID)).thenReturn(Optional.of(node));
+        byte[] bytes = "[{\"pubkey\":\"abc\"}]".getBytes();
+        when(archiver.depositDataFor(REF, "0xabc")).thenReturn(bytes);
+        DownloadValidatorKeysService service = new DownloadValidatorKeysService(nodes, archiver);
+
+        byte[] result = service.downloadDepositDataFor(NODE_ID, OWNER, "0xabc");
+
+        assertThat(result).isEqualTo(bytes);
+    }
+
+    @Test
+    void downloadDepositDataFor_should_throwNotFound_when_ownerMismatch() {
+        Node node = nodeWith(true, REF);
+        when(nodes.findById(NODE_ID)).thenReturn(Optional.of(node));
+        DownloadValidatorKeysService service = new DownloadValidatorKeysService(nodes, archiver);
+
+        assertThatThrownBy(
+                        () ->
+                                service.downloadDepositDataFor(
+                                        NODE_ID, new OwnerId(UUID.randomUUID()), "0xabc"))
+                .isInstanceOf(NodeNotFoundException.class);
+        then(archiver).should(never()).depositDataFor(any(), any());
+    }
+
     private static Node nodeWith(boolean validator, DeploymentRef ref) {
         NodeOptions opts =
                 new NodeOptions(

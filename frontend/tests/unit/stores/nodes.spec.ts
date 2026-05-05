@@ -39,6 +39,10 @@ function makeApi(overrides: Partial<NodesApi> = {}): NodesApi {
         listValidatorKeys: vi.fn(),
         generateValidatorKeys: vi.fn(),
         importValidatorKeys: vi.fn(),
+        downloadKeystores: vi.fn(),
+        downloadDepositData: vi.fn(),
+        downloadKeystoreFor: vi.fn(),
+        downloadDepositDataFor: vi.fn(),
         ...overrides,
     };
 }

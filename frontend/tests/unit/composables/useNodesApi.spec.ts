@@ -156,4 +156,78 @@ describe('useNodesApi (createNodesApi)', () => {
         expect(keystore).toBeInstanceOf(File);
         expect((keystore as File).name).toBe('keystore-1.json');
     });
+
+    it('downloadKeystores_should_GET_zip_blob_when_called', async () => {
+        const blob = new Blob(['fake-zip'], { type: 'application/zip' });
+        const fetcher = fakeFetcher(blob);
+        const api = createNodesApi(fetcher, OWNER);
+
+        const out = await api.downloadKeystores(sampleNode.id);
+
+        expect(out).toBe(blob);
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator-keys/download`,
+            {
+                method: 'GET',
+                headers: { 'X-Owner-Id': OWNER },
+                responseType: 'blob',
+            },
+        );
+    });
+
+    it('downloadDepositData_should_GET_json_blob_when_called', async () => {
+        const blob = new Blob(['[]'], { type: 'application/json' });
+        const fetcher = fakeFetcher(blob);
+        const api = createNodesApi(fetcher, OWNER);
+
+        const out = await api.downloadDepositData(sampleNode.id);
+
+        expect(out).toBe(blob);
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator-keys/deposit-data`,
+            {
+                method: 'GET',
+                headers: { 'X-Owner-Id': OWNER },
+                responseType: 'blob',
+            },
+        );
+    });
+
+    it('downloadKeystoreFor_should_GET_keystore_blob_for_pubkey_when_called', async () => {
+        const blob = new Blob(['{}'], { type: 'application/json' });
+        const fetcher = fakeFetcher(blob);
+        const api = createNodesApi(fetcher, OWNER);
+        const pubkey = '0xabc123';
+
+        const out = await api.downloadKeystoreFor(sampleNode.id, pubkey);
+
+        expect(out).toBe(blob);
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator-keys/${encodeURIComponent(pubkey)}/keystore`,
+            {
+                method: 'GET',
+                headers: { 'X-Owner-Id': OWNER },
+                responseType: 'blob',
+            },
+        );
+    });
+
+    it('downloadDepositDataFor_should_GET_entry_blob_for_pubkey_when_called', async () => {
+        const blob = new Blob(['[{}]'], { type: 'application/json' });
+        const fetcher = fakeFetcher(blob);
+        const api = createNodesApi(fetcher, OWNER);
+        const pubkey = '0xdef456';
+
+        const out = await api.downloadDepositDataFor(sampleNode.id, pubkey);
+
+        expect(out).toBe(blob);
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator-keys/${encodeURIComponent(pubkey)}/deposit-data`,
+            {
+                method: 'GET',
+                headers: { 'X-Owner-Id': OWNER },
+                responseType: 'blob',
+            },
+        );
+    });
 });

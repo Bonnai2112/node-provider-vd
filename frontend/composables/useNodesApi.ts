@@ -22,6 +22,10 @@ export interface NodesApi {
         keystores: File[],
         password: string,
     ): Promise<ValidatorKey[]>;
+    downloadKeystores(nodeId: string): Promise<Blob>;
+    downloadDepositData(nodeId: string): Promise<Blob>;
+    downloadKeystoreFor(nodeId: string, pubkey: string): Promise<Blob>;
+    downloadDepositDataFor(nodeId: string, pubkey: string): Promise<Blob>;
 }
 
 export interface FetchLike {
@@ -86,6 +90,40 @@ export function createNodesApi(fetcher: FetchLike, ownerId: string): NodesApi {
                 },
             );
         },
+
+        downloadKeystores: (nodeId) =>
+            fetcher<Blob>(`/api/v1/nodes/${nodeId}/validator-keys/download`, {
+                method: 'GET',
+                headers,
+                responseType: 'blob',
+            }),
+
+        downloadDepositData: (nodeId) =>
+            fetcher<Blob>(`/api/v1/nodes/${nodeId}/validator-keys/deposit-data`, {
+                method: 'GET',
+                headers,
+                responseType: 'blob',
+            }),
+
+        downloadKeystoreFor: (nodeId, pubkey) =>
+            fetcher<Blob>(
+                `/api/v1/nodes/${nodeId}/validator-keys/${encodeURIComponent(pubkey)}/keystore`,
+                {
+                    method: 'GET',
+                    headers,
+                    responseType: 'blob',
+                },
+            ),
+
+        downloadDepositDataFor: (nodeId, pubkey) =>
+            fetcher<Blob>(
+                `/api/v1/nodes/${nodeId}/validator-keys/${encodeURIComponent(pubkey)}/deposit-data`,
+                {
+                    method: 'GET',
+                    headers,
+                    responseType: 'blob',
+                },
+            ),
     };
 }
 

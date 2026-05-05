@@ -22,6 +22,30 @@ public final class DownloadValidatorKeysService implements DownloadValidatorKeys
 
     @Override
     public byte[] downloadKeystores(NodeId nodeId, OwnerId requester) {
+        return withDeployment(nodeId, requester, archiver::archive);
+    }
+
+    @Override
+    public byte[] downloadDepositData(NodeId nodeId, OwnerId requester) {
+        return withDeployment(nodeId, requester, archiver::depositData);
+    }
+
+    @Override
+    public byte[] downloadKeystoreFor(NodeId nodeId, OwnerId requester, String pubkey) {
+        Objects.requireNonNull(pubkey, "pubkey");
+        return withDeployment(nodeId, requester, ref -> archiver.keystoreFor(ref, pubkey));
+    }
+
+    @Override
+    public byte[] downloadDepositDataFor(NodeId nodeId, OwnerId requester, String pubkey) {
+        Objects.requireNonNull(pubkey, "pubkey");
+        return withDeployment(nodeId, requester, ref -> archiver.depositDataFor(ref, pubkey));
+    }
+
+    private byte[] withDeployment(
+            NodeId nodeId,
+            OwnerId requester,
+            java.util.function.Function<DeploymentRef, byte[]> action) {
         Objects.requireNonNull(nodeId, "nodeId");
         Objects.requireNonNull(requester, "requester");
         Node node = nodes.findById(nodeId).orElseThrow(() -> new NodeNotFoundException(nodeId));
@@ -36,6 +60,6 @@ public final class DownloadValidatorKeysService implements DownloadValidatorKeys
         if (ref == null) {
             throw new IllegalStateException("node has no deployment yet");
         }
-        return archiver.archive(ref);
+        return action.apply(ref);
     }
 }

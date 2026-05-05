@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createNodesApi, type FetchLike } from '~/composables/useNodesApi';
-import type { NodeView } from '~/types/node';
+import { DEFAULT_NODE_OPTIONS, type NodeView, type ValidatorKey } from '~/types/node';
 
-const OWNER = '11111111-1111-1111-1111-111111111111';
+const OWNER = '21111111-1111-1111-1111-111111111111';
 
 const sampleNode: NodeView = {
     id: '22222222-2222-2222-2222-222222222222',
@@ -13,6 +13,17 @@ const sampleNode: NodeView = {
     status: 'READY',
     endpoint: 'http://localhost:8545',
     reason: null,
+    options: DEFAULT_NODE_OPTIONS,
+    elSync: null,
+    clSync: null,
+    peers: null,
+    lastObservedAt: null,
+};
+
+const sampleKey: ValidatorKey = {
+    id: '33333333-3333-3333-3333-333333333333',
+    pubkey: '0xabc',
+    importedAt: '2026-05-04T10:00:00Z',
 };
 
 function fakeFetcher(returnValue: unknown) {
@@ -52,23 +63,24 @@ describe('useNodesApi (createNodesApi)', () => {
         const fetcher = fakeFetcher(accepted);
         const api = createNodesApi(fetcher, OWNER);
 
-        const result = await api.create({
-            ownerId: OWNER,
-            network: 'HOODI',
-            executionLayer: 'BESU',
-            consensusLayer: 'TEKU',
-        });
+        const body = {
+            network: 'HOODI' as const,
+            executionLayer: 'BESU' as const,
+            consensusLayer: 'TEKU' as const,
+            validator: true,
+            mevBoost: false,
+            feeRecipient: '0x0000000000000000000000000000000000000001',
+            graffiti: null,
+            mevMinBid: null,
+            mevBuildFactor: null,
+        };
+        const result = await api.create(body);
 
         expect(result).toEqual(accepted);
         expect(fetcher).toHaveBeenCalledWith('/api/v1/nodes', {
             method: 'POST',
             headers: { 'X-Owner-Id': OWNER },
-            body: {
-                ownerId: OWNER,
-                network: 'HOODI',
-                executionLayer: 'BESU',
-                consensusLayer: 'TEKU',
-            },
+            body,
         });
     });
 
@@ -82,5 +94,66 @@ describe('useNodesApi (createNodesApi)', () => {
             method: 'DELETE',
             headers: { 'X-Owner-Id': OWNER },
         });
+    });
+
+    it('listValidatorKeys_should_GET_keys_with_owner_header_when_called', async () => {
+        const fetcher = fakeFetcher([sampleKey]);
+        const api = createNodesApi(fetcher, OWNER);
+
+        const result = await api.listValidatorKeys(sampleNode.id);
+
+        expect(result).toEqual([sampleKey]);
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator-keys`,
+            { method: 'GET', headers: { 'X-Owner-Id': OWNER } },
+        );
+    });
+
+    it('generateValidatorKeys_should_POST_count_and_withdrawal_when_called', async () => {
+        const result = {
+            mnemonic: 'twelve words …',
+            password: 'secret',
+            keys: [sampleKey],
+        };
+        const fetcher = fakeFetcher(result);
+        const api = createNodesApi(fetcher, OWNER);
+
+        const out = await api.generateValidatorKeys(sampleNode.id, {
+            count: 2,
+            withdrawalAddress: '0x' + 'a'.repeat(40),
+        });
+
+        expect(out).toEqual(result);
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator-keys/generate`,
+            {
+                method: 'POST',
+                headers: { 'X-Owner-Id': OWNER },
+                body: { count: 2, withdrawalAddress: '0x' + 'a'.repeat(40) },
+            },
+        );
+    });
+
+    it('importValidatorKeys_should_POST_multipart_form_when_called', async () => {
+        const fetcher = fakeFetcher([sampleKey]);
+        const api = createNodesApi(fetcher, OWNER);
+        const file = new File(['{}'], 'keystore-1.json', {
+            type: 'application/json',
+        });
+
+        const out = await api.importValidatorKeys(sampleNode.id, [file], 'p4ss');
+
+        expect(out).toEqual([sampleKey]);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        const [url, opts] = fetcher.mock.calls[0]!;
+        expect(url).toBe(`/api/v1/nodes/${sampleNode.id}/validator-keys/import`);
+        expect(opts.method).toBe('POST');
+        expect(opts.headers).toEqual({ 'X-Owner-Id': OWNER });
+        expect(opts.body).toBeInstanceOf(FormData);
+        const form = opts.body as FormData;
+        expect(form.get('password')).toBe('p4ss');
+        const keystore = form.get('keystores');
+        expect(keystore).toBeInstanceOf(File);
+        expect((keystore as File).name).toBe('keystore-1.json');
     });
 });

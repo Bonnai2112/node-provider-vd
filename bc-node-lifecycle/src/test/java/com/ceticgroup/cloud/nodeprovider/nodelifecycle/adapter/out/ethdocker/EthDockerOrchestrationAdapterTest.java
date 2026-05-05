@@ -3,12 +3,14 @@ package com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClientPair;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.DeploymentRef;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.JsonRpcEndpoint;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.LayerState;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Network;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeSpec;
@@ -16,6 +18,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.RuntimeStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,21 +57,26 @@ class EthDockerOrchestrationAdapterTest {
                         new NodeId(UUID.randomUUID()),
                         new OwnerId(UUID.randomUUID()),
                         Network.HOODI,
-                        ClientPair.besuTeku());
+                        ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults());
     }
 
     @Test
     void deploy_should_returnDeploymentRefWithSerializedPayload() throws Exception {
         EthDockerRef ref = new EthDockerRef("v26.4.1", "abc123");
-        AllocatedPorts ports = new AllocatedPorts(30100, 30101, 30102);
+        AllocatedPorts ports = new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106);
         when(refResolver.resolve(anyString(), anyString())).thenReturn(ref);
         when(portAllocator.allocate()).thenReturn(ports);
+        when(shell.readDefaultEnv(any())).thenReturn(Map.of("ENV_VERSION", "55"));
 
         DeploymentRef result = adapter.deploy(spec);
 
         verify(shell).ensureCache(any(), anyString());
         verify(shell).cloneIntoWorkdir(any(), any(), any());
+        verify(shell).readDefaultEnv(any());
         verify(shell).writeEnv(any(), anyString());
+        verify(shell).writeFile(any(), eq("host-ports.yml"), anyString());
         verify(shell).runEthdUp(any());
 
         DeploymentPayload payload = mapper.readValue(result.payload(), DeploymentPayload.class);
@@ -84,7 +92,7 @@ class EthDockerOrchestrationAdapterTest {
                 new DeploymentPayload(
                         "/tmp/platform/nodes/x/eth-docker",
                         "node-deadbeef",
-                        new AllocatedPorts(30100, 30101, 30102),
+                        new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106),
                         new EthDockerRef("v26.4.1", "abc123"));
         DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
 
@@ -101,14 +109,16 @@ class EthDockerOrchestrationAdapterTest {
                 new DeploymentPayload(
                         "/tmp/x",
                         "node-12345678",
-                        new AllocatedPorts(30100, 30101, 30102),
+                        new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106),
                         new EthDockerRef("v26.4.1", "abc"));
         DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
-        when(inspector.inspectByProject("node-12345678")).thenReturn(new RuntimeStatus.Running());
+        RuntimeStatus.Healthy expected =
+                RuntimeStatus.Healthy.of(new LayerState.Running(), new LayerState.Running());
+        when(inspector.inspectByProject("node-12345678")).thenReturn(expected);
 
         RuntimeStatus status = adapter.getDeploymentStatus(ref);
 
-        assertThat(status).isInstanceOf(RuntimeStatus.Running.class);
+        assertThat(status).isEqualTo(expected);
     }
 
     @Test
@@ -117,7 +127,7 @@ class EthDockerOrchestrationAdapterTest {
                 new DeploymentPayload(
                         "/tmp/x",
                         "node-12345678",
-                        new AllocatedPorts(30123, 30101, 30102),
+                        new AllocatedPorts(30123, 30101, 30102, 30103, 30104, 30105, 30106),
                         new EthDockerRef("v26.4.1", "abc"));
         DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
 

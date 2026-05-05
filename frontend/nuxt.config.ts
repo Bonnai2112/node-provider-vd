@@ -10,8 +10,16 @@ export default defineNuxtConfig({
     css: ['~/assets/css/tailwind.css'],
     runtimeConfig: {
         public: {
-            apiBase: 'http://localhost:8080',
-            devOwnerId: '11111111-1111-1111-1111-111111111111',
+            apiBase: '',
+            devOwnerId: '21111111-1111-1111-1111-111111111111',
+        },
+    },
+    nitro: {
+        devProxy: {
+            '/api': {
+                target: 'http://localhost:8080/api',
+                changeOrigin: true,
+            },
         },
     },
 });

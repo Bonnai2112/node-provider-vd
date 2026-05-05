@@ -23,7 +23,7 @@ function closeModal() {
 
 async function onSubmit(payload: CreateNodeRequest) {
     try {
-        const accepted = await store.create(api, payload);
+        const accepted = await store.create(api, ownerId, payload);
         modalOpen.value = false;
         await router.push(`/nodes/${accepted.id}`);
     } catch {
@@ -70,7 +70,6 @@ async function onSubmit(payload: CreateNodeRequest) {
 
         <ProvisionNodeModal
             :open="modalOpen"
-            :owner-id="ownerId"
             :submitting="store.creating"
             :error="store.createError"
             @submit="onSubmit"

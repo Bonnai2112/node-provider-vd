@@ -50,8 +50,13 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
             shell.ensureCache(Paths.get(properties.cacheDir()), properties.repoUrl());
             shell.cloneIntoWorkdir(Paths.get(properties.cacheDir()), ref.tag(), workdir);
 
-            Map<String, String> env = EthDockerEnvFile.render(spec, ports, projectName);
+            Map<String, String> defaults = shell.readDefaultEnv(workdir);
+            Map<String, String> env = EthDockerEnvFile.render(spec, ports, projectName, defaults);
             shell.writeEnv(workdir, EthDockerEnvFile.serialize(env));
+            shell.writeFile(
+                    workdir,
+                    EthDockerEnvFile.HOST_PORTS_OVERRIDE_FILE,
+                    EthDockerEnvFile.hostPortsOverrideYaml());
 
             shell.runEthdUp(workdir);
 
@@ -86,6 +91,12 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
         DeploymentPayload payload = deserialize(ref);
         return Optional.of(
                 new JsonRpcEndpoint(URI.create("http://localhost:" + payload.ports().elRpcPort())));
+    }
+
+    @Override
+    public Optional<URI> clRestEndpointFor(DeploymentRef ref) {
+        DeploymentPayload payload = deserialize(ref);
+        return Optional.of(URI.create("http://localhost:" + payload.ports().clRestPort()));
     }
 
     private String serialize(DeploymentPayload payload) {

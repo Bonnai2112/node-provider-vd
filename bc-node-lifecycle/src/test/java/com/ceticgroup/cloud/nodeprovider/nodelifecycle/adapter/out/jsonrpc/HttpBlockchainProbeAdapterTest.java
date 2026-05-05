@@ -2,19 +2,22 @@ package com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.jsonrpc;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.serverError;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ConsensusSyncStatus;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ExecutionSyncStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.JsonRpcEndpoint;
-import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.SyncStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.util.Optional;
+import java.util.OptionalInt;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +27,7 @@ class HttpBlockchainProbeAdapterTest {
     private WireMockServer server;
     private HttpBlockchainProbeAdapter adapter;
     private JsonRpcEndpoint endpoint;
+    private URI clBaseUri;
 
     @BeforeEach
     void setUp() {
@@ -31,6 +35,7 @@ class HttpBlockchainProbeAdapterTest {
         server.start();
         adapter = new HttpBlockchainProbeAdapter(HttpClient.newHttpClient(), new ObjectMapper());
         endpoint = new JsonRpcEndpoint(URI.create(server.baseUrl() + "/"));
+        clBaseUri = URI.create(server.baseUrl() + "/");
     }
 
     @AfterEach
@@ -39,19 +44,19 @@ class HttpBlockchainProbeAdapterTest {
     }
 
     @Test
-    void probeSync_should_returnSynced_when_eth_syncing_returnsFalse() {
+    void probeElSync_should_returnSynced_when_eth_syncing_returnsFalse() {
         server.stubFor(
                 post(urlEqualTo("/"))
                         .withRequestBody(matchingMethod("eth_syncing"))
                         .willReturn(jsonRpcResult("false")));
 
-        SyncStatus status = adapter.probeSync(endpoint);
+        Optional<ExecutionSyncStatus> status = adapter.probeElSync(endpoint);
 
-        assertThat(status).isInstanceOf(SyncStatus.Synced.class);
+        assertThat(status).get().isInstanceOf(ExecutionSyncStatus.Synced.class);
     }
 
     @Test
-    void probeSync_should_returnSyncing_when_eth_syncing_returnsObject() {
+    void probeElSync_should_returnSyncing_when_eth_syncing_returnsObject() {
         server.stubFor(
                 post(urlEqualTo("/"))
                         .withRequestBody(matchingMethod("eth_syncing"))
@@ -61,27 +66,28 @@ class HttpBlockchainProbeAdapterTest {
                                                 + "\"currentBlock\":\"0x10\","
                                                 + "\"highestBlock\":\"0x20\"}")));
 
-        SyncStatus status = adapter.probeSync(endpoint);
+        Optional<ExecutionSyncStatus> status = adapter.probeElSync(endpoint);
 
         assertThat(status)
+                .get()
                 .isInstanceOfSatisfying(
-                        SyncStatus.Syncing.class,
+                        ExecutionSyncStatus.Syncing.class,
                         s -> {
-                            assertThat(s.headSlot()).isEqualTo(32L);
-                            assertThat(s.currentSlot()).isEqualTo(16L);
+                            assertThat(s.highestBlock()).isEqualTo(32L);
+                            assertThat(s.currentBlock()).isEqualTo(16L);
                         });
     }
 
     @Test
-    void probeSync_should_returnNotSyncing_when_resultShapeUnknown() {
+    void probeElSync_should_returnNotSyncing_when_resultShapeUnknown() {
         server.stubFor(
                 post(urlEqualTo("/"))
                         .withRequestBody(matchingMethod("eth_syncing"))
                         .willReturn(jsonRpcResult("\"unexpected\"")));
 
-        SyncStatus status = adapter.probeSync(endpoint);
+        Optional<ExecutionSyncStatus> status = adapter.probeElSync(endpoint);
 
-        assertThat(status).isInstanceOf(SyncStatus.NotSyncing.class);
+        assertThat(status).get().isInstanceOf(ExecutionSyncStatus.NotSyncing.class);
     }
 
     @Test
@@ -91,9 +97,9 @@ class HttpBlockchainProbeAdapterTest {
                         .withRequestBody(matchingMethod("net_peerCount"))
                         .willReturn(jsonRpcResult("\"0x10\"")));
 
-        int peers = adapter.probePeers(endpoint);
+        OptionalInt peers = adapter.probePeers(endpoint);
 
-        assertThat(peers).isEqualTo(16);
+        assertThat(peers).hasValue(16);
     }
 
     @Test
@@ -103,9 +109,9 @@ class HttpBlockchainProbeAdapterTest {
                         .withRequestBody(matchingMethod("net_peerCount"))
                         .willReturn(jsonRpcResult("0")));
 
-        int peers = adapter.probePeers(endpoint);
+        OptionalInt peers = adapter.probePeers(endpoint);
 
-        assertThat(peers).isZero();
+        assertThat(peers).hasValue(0);
     }
 
     @Test
@@ -124,21 +130,89 @@ class HttpBlockchainProbeAdapterTest {
                         .whenScenarioStateIs("retry-succeeds")
                         .willReturn(jsonRpcResult("\"0x05\"")));
 
-        int peers = adapter.probePeers(endpoint);
+        OptionalInt peers = adapter.probePeers(endpoint);
 
-        assertThat(peers).isEqualTo(5);
+        assertThat(peers).hasValue(5);
     }
 
     @Test
-    void call_should_throw_when_bothAttemptsFail() {
+    void probePeers_should_returnEmpty_when_bothAttemptsFail() {
         server.stubFor(
                 post(urlEqualTo("/"))
                         .withRequestBody(matchingMethod("net_peerCount"))
                         .willReturn(serverError()));
 
-        assertThatThrownBy(() -> adapter.probePeers(endpoint))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("net_peerCount");
+        OptionalInt peers = adapter.probePeers(endpoint);
+
+        assertThat(peers).isEmpty();
+    }
+
+    @Test
+    void probeElSync_should_returnEmpty_when_endpointUnreachable() {
+        JsonRpcEndpoint dead = new JsonRpcEndpoint(URI.create("http://127.0.0.1:1/"));
+
+        Optional<ExecutionSyncStatus> status = adapter.probeElSync(dead);
+
+        assertThat(status).isEmpty();
+    }
+
+    @Test
+    void probeClSync_should_returnSynced_when_isSyncingFalseAndDistanceZero() {
+        server.stubFor(
+                get(urlEqualTo("/eth/v1/node/syncing"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                "{\"data\":{\"head_slot\":\"123456\","
+                                                        + "\"sync_distance\":\"0\","
+                                                        + "\"is_syncing\":false}}")));
+
+        Optional<ConsensusSyncStatus> status = adapter.probeClSync(clBaseUri);
+
+        assertThat(status).get().isInstanceOf(ConsensusSyncStatus.Synced.class);
+    }
+
+    @Test
+    void probeClSync_should_returnSyncing_when_isSyncingTrue() {
+        server.stubFor(
+                get(urlEqualTo("/eth/v1/node/syncing"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                "{\"data\":{\"head_slot\":\"100000\","
+                                                        + "\"sync_distance\":\"123\","
+                                                        + "\"is_syncing\":true}}")));
+
+        Optional<ConsensusSyncStatus> status = adapter.probeClSync(clBaseUri);
+
+        assertThat(status)
+                .get()
+                .isInstanceOfSatisfying(
+                        ConsensusSyncStatus.Syncing.class,
+                        s -> {
+                            assertThat(s.headSlot()).isEqualTo(100000L);
+                            assertThat(s.syncDistance()).isEqualTo(123L);
+                        });
+    }
+
+    @Test
+    void probeClSync_should_returnEmpty_when_endpointUnreachable() {
+        URI dead = URI.create("http://127.0.0.1:1/");
+
+        Optional<ConsensusSyncStatus> status = adapter.probeClSync(dead);
+
+        assertThat(status).isEmpty();
+    }
+
+    @Test
+    void probeClSync_should_returnEmpty_when_serverErrorOnAllAttempts() {
+        server.stubFor(get(urlEqualTo("/eth/v1/node/syncing")).willReturn(serverError()));
+
+        Optional<ConsensusSyncStatus> status = adapter.probeClSync(clBaseUri);
+
+        assertThat(status).isEmpty();
     }
 
     private static com.github.tomakehurst.wiremock.matching.StringValuePattern matchingMethod(

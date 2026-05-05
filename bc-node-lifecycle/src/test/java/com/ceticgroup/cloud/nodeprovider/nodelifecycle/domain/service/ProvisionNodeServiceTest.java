@@ -9,13 +9,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClientPair;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.DeploymentRef;
-import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ElClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Network;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Node;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.event.NodeFailed;
@@ -55,7 +54,10 @@ class ProvisionNodeServiceTest {
     void provision_should_returnNewNodeId() {
         ProvisionNodeCommand command =
                 new ProvisionNodeCommand(
-                        new OwnerId(UUID.randomUUID()), Network.HOODI, ClientPair.besuTeku());
+                        new OwnerId(UUID.randomUUID()),
+                        Network.HOODI,
+                        ClientPair.besuTeku(),
+                        NodeOptions.defaults());
 
         NodeId id = service.provision(command);
 
@@ -67,7 +69,8 @@ class ProvisionNodeServiceTest {
     void provision_should_persistNodeInRequestedStatus() {
         OwnerId owner = new OwnerId(UUID.randomUUID());
         ProvisionNodeCommand command =
-                new ProvisionNodeCommand(owner, Network.SEPOLIA, ClientPair.besuTeku());
+                new ProvisionNodeCommand(
+                        owner, Network.SEPOLIA, ClientPair.besuTeku(), NodeOptions.defaults());
 
         NodeId id = service.provision(command);
 
@@ -85,7 +88,10 @@ class ProvisionNodeServiceTest {
     void provision_should_publishNodeRequestedEvent() {
         ProvisionNodeCommand command =
                 new ProvisionNodeCommand(
-                        new OwnerId(UUID.randomUUID()), Network.HOODI, ClientPair.besuTeku());
+                        new OwnerId(UUID.randomUUID()),
+                        Network.HOODI,
+                        ClientPair.besuTeku(),
+                        NodeOptions.defaults());
 
         NodeId id = service.provision(command);
 
@@ -101,7 +107,10 @@ class ProvisionNodeServiceTest {
     void provision_should_publishExactlyOneEvent_when_deployNotYetExecuted() {
         ProvisionNodeCommand command =
                 new ProvisionNodeCommand(
-                        new OwnerId(UUID.randomUUID()), Network.HOODI, ClientPair.besuTeku());
+                        new OwnerId(UUID.randomUUID()),
+                        Network.HOODI,
+                        ClientPair.besuTeku(),
+                        NodeOptions.defaults());
 
         service.provision(command);
 
@@ -116,37 +125,27 @@ class ProvisionNodeServiceTest {
     }
 
     @Test
-    void provision_should_throw_when_executionLayerIsValidator() {
-        ElClient validatorEL = org.mockito.Mockito.mock(ElClient.class);
-        when(validatorEL.isValidator()).thenReturn(true);
+    void provision_should_persistNodeOptions_when_provided() {
+        OwnerId owner = new OwnerId(UUID.randomUUID());
+        NodeOptions opts =
+                new NodeOptions(
+                        true,
+                        true,
+                        "0xdeadbeef00000000000000000000000000000000",
+                        Optional.of("CETIC-DEMO"),
+                        Optional.empty(),
+                        java.util.OptionalInt.empty());
         ProvisionNodeCommand command =
-                new ProvisionNodeCommand(
-                        new OwnerId(UUID.randomUUID()),
-                        Network.HOODI,
-                        new ClientPair(validatorEL, ClClient.TEKU));
+                new ProvisionNodeCommand(owner, Network.HOODI, ClientPair.besuTeku(), opts);
 
-        assertThatThrownBy(() -> service.provision(command))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("validator");
+        service.provision(command);
 
-        verifyNoInteractions(repository, publisher, orchestration);
-    }
-
-    @Test
-    void provision_should_throw_when_consensusLayerIsValidator() {
-        ClClient validatorCL = org.mockito.Mockito.mock(ClClient.class);
-        when(validatorCL.isValidator()).thenReturn(true);
-        ProvisionNodeCommand command =
-                new ProvisionNodeCommand(
-                        new OwnerId(UUID.randomUUID()),
-                        Network.HOODI,
-                        new ClientPair(ElClient.BESU, validatorCL));
-
-        assertThatThrownBy(() -> service.provision(command))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("validator");
-
-        verifyNoInteractions(repository, publisher, orchestration);
+        ArgumentCaptor<Node> captor = ArgumentCaptor.forClass(Node.class);
+        verify(repository).save(captor.capture());
+        Node saved = captor.getValue();
+        assertThat(saved.options().validator()).isTrue();
+        assertThat(saved.options().mevBoost()).isTrue();
+        assertThat(saved.options().graffiti()).hasValue("CETIC-DEMO");
     }
 
     @Test
@@ -164,12 +163,16 @@ class ProvisionNodeServiceTest {
                                             new OwnerId(UUID.randomUUID()),
                                             Network.HOODI,
                                             ClientPair.besuTeku(),
+                                            NodeOptions.defaults(),
                                             new NodeStatus.Requested(),
                                             null));
                         });
         ProvisionNodeCommand command =
                 new ProvisionNodeCommand(
-                        new OwnerId(UUID.randomUUID()), Network.HOODI, ClientPair.besuTeku());
+                        new OwnerId(UUID.randomUUID()),
+                        Network.HOODI,
+                        ClientPair.besuTeku(),
+                        NodeOptions.defaults());
 
         service.provision(command);
 
@@ -196,12 +199,16 @@ class ProvisionNodeServiceTest {
                                             new OwnerId(UUID.randomUUID()),
                                             Network.HOODI,
                                             ClientPair.besuTeku(),
+                                            NodeOptions.defaults(),
                                             new NodeStatus.Requested(),
                                             null));
                         });
         ProvisionNodeCommand command =
                 new ProvisionNodeCommand(
-                        new OwnerId(UUID.randomUUID()), Network.HOODI, ClientPair.besuTeku());
+                        new OwnerId(UUID.randomUUID()),
+                        Network.HOODI,
+                        ClientPair.besuTeku(),
+                        NodeOptions.defaults());
 
         service.provision(command);
 

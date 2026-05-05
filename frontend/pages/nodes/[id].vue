@@ -85,6 +85,19 @@ const canTerminate = computed(() => {
     if (!current) return false;
     return current.status !== 'TERMINATED' && current.status !== 'TERMINATING';
 });
+
+function formatRelative(iso: string | null): string {
+    if (!iso) return '—';
+    const seconds = Math.max(
+        0,
+        Math.round((Date.now() - new Date(iso).getTime()) / 1000),
+    );
+    if (seconds < 60) return `il y a ${seconds}s`;
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `il y a ${minutes}min`;
+    const hours = Math.floor(minutes / 60);
+    return `il y a ${hours}h`;
+}
 </script>
 
 <template>
@@ -107,81 +120,124 @@ const canTerminate = computed(() => {
             Erreur : {{ store.detailError }}
         </div>
 
-        <article
-            v-else-if="node"
-            class="space-y-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
-        >
-            <header class="flex items-start justify-between gap-4">
-                <div>
-                    <h1 class="text-xl font-semibold tracking-tight">
-                        Nœud
-                        <span class="font-mono text-base text-slate-700">
-                            {{ node.id }}
+        <template v-else-if="node">
+            <article
+                class="space-y-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+            >
+                <header class="flex items-start justify-between gap-4">
+                    <div>
+                        <h1 class="text-xl font-semibold tracking-tight">
+                            Nœud
+                            <span class="font-mono text-base text-slate-700">
+                                {{ node.id }}
+                            </span>
+                        </h1>
+                        <p class="mt-1 text-sm text-slate-600">
+                            {{ node.network }} · {{ node.executionLayer }}+{{
+                                node.consensusLayer
+                            }}
+                        </p>
+                    </div>
+                    <div class="flex flex-col items-end gap-1">
+                        <NodeStatusBadge :status="node.status" />
+                        <span
+                            v-if="node.options.validator"
+                            class="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-800 ring-1 ring-inset ring-violet-200"
+                        >
+                            Validator
                         </span>
-                    </h1>
-                    <p class="mt-1 text-sm text-slate-600">
-                        {{ node.network }} · {{ node.executionLayer }}+{{
-                            node.consensusLayer
-                        }}
+                        <span
+                            v-if="node.options.mevBoost"
+                            class="inline-flex items-center rounded-full bg-fuchsia-100 px-2.5 py-0.5 text-xs font-medium text-fuchsia-800 ring-1 ring-inset ring-fuchsia-200"
+                        >
+                            MEV-Boost
+                        </span>
+                    </div>
+                </header>
+
+                <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                        <dt class="text-xs font-medium uppercase text-slate-500">
+                            Owner
+                        </dt>
+                        <dd class="mt-1 font-mono text-sm text-slate-800">
+                            {{ node.ownerId }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium uppercase text-slate-500">
+                            Endpoint JSON-RPC
+                        </dt>
+                        <dd
+                            class="mt-1 break-all font-mono text-sm text-slate-800"
+                            data-testid="rpc-endpoint"
+                        >
+                            <template v-if="node.endpoint">
+                                {{ node.endpoint }}
+                            </template>
+                            <span v-else class="text-slate-400">
+                                Indisponible tant que le nœud n'est pas Ready.
+                            </span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium uppercase text-slate-500">
+                            Peers
+                        </dt>
+                        <dd class="mt-1 font-mono text-sm text-slate-800">
+                            {{ node.peers ?? '—' }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium uppercase text-slate-500">
+                            Dernière observation
+                        </dt>
+                        <dd class="mt-1 text-sm text-slate-800">
+                            {{ formatRelative(node.lastObservedAt) }}
+                        </dd>
+                    </div>
+                    <div v-if="node.reason" class="sm:col-span-2">
+                        <dt class="text-xs font-medium uppercase text-slate-500">
+                            Détail
+                        </dt>
+                        <dd class="mt-1 text-sm text-slate-800">
+                            {{ node.reason }}
+                        </dd>
+                    </div>
+                </dl>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <SyncProgress label="Execution layer" :sync="node.elSync" />
+                    <SyncProgress label="Consensus layer" :sync="node.clSync" />
+                </div>
+
+                <NodeOptionsPanel :options="node.options" />
+
+                <div class="flex items-center gap-3 border-t border-slate-200 pt-4">
+                    <button
+                        type="button"
+                        class="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                        :disabled="!canTerminate || terminating"
+                        data-testid="terminate-btn"
+                        @click="onTerminate"
+                    >
+                        {{ terminating ? 'En cours…' : 'Terminer' }}
+                    </button>
+                    <p
+                        v-if="terminateError"
+                        class="text-sm text-rose-700"
+                        role="alert"
+                    >
+                        {{ terminateError }}
                     </p>
                 </div>
-                <NodeStatusBadge :status="node.status" />
-            </header>
+            </article>
 
-            <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                    <dt class="text-xs font-medium uppercase text-slate-500">
-                        Owner
-                    </dt>
-                    <dd class="mt-1 font-mono text-sm text-slate-800">
-                        {{ node.ownerId }}
-                    </dd>
-                </div>
-                <div>
-                    <dt class="text-xs font-medium uppercase text-slate-500">
-                        Endpoint JSON-RPC
-                    </dt>
-                    <dd
-                        class="mt-1 font-mono text-sm break-all text-slate-800"
-                        data-testid="rpc-endpoint"
-                    >
-                        <template v-if="node.endpoint">
-                            {{ node.endpoint }}
-                        </template>
-                        <span v-else class="text-slate-400">
-                            Indisponible tant que le nœud n'est pas Ready.
-                        </span>
-                    </dd>
-                </div>
-                <div v-if="node.reason" class="sm:col-span-2">
-                    <dt class="text-xs font-medium uppercase text-slate-500">
-                        Détail
-                    </dt>
-                    <dd class="mt-1 text-sm text-slate-800">
-                        {{ node.reason }}
-                    </dd>
-                </div>
-            </dl>
-
-            <div class="flex items-center gap-3 border-t border-slate-200 pt-4">
-                <button
-                    type="button"
-                    class="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                    :disabled="!canTerminate || terminating"
-                    data-testid="terminate-btn"
-                    @click="onTerminate"
-                >
-                    {{ terminating ? 'En cours…' : 'Terminer' }}
-                </button>
-                <p
-                    v-if="terminateError"
-                    class="text-sm text-rose-700"
-                    role="alert"
-                >
-                    {{ terminateError }}
-                </p>
-            </div>
-        </article>
+            <ValidatorKeysSection
+                :node-id="node.id"
+                :enabled="node.options.validator"
+            />
+        </template>
 
         <div v-else class="text-sm text-slate-500">Chargement…</div>
     </section>

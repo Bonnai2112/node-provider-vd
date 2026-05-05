@@ -20,6 +20,7 @@ class NodeTest {
     private static final OwnerId OWNER_ID = new OwnerId(UUID.randomUUID());
     private static final Network NETWORK = Network.HOODI;
     private static final ClientPair CLIENT_PAIR = ClientPair.besuTeku();
+    private static final NodeOptions OPTIONS = NodeOptions.defaults();
     private static final Endpoint ENDPOINT = new Endpoint(URI.create("https://rpc.example.com"));
     private static final DeploymentRef DEPLOYMENT_REF = new DeploymentRef("{\"k\":\"v\"}");
 
@@ -28,7 +29,7 @@ class NodeTest {
 
         @Test
         void request_should_createNodeInRequestedStatus_when_validInputs() {
-            Node node = Node.request(NODE_ID, OWNER_ID, NETWORK, CLIENT_PAIR);
+            Node node = Node.request(NODE_ID, OWNER_ID, NETWORK, CLIENT_PAIR, OPTIONS);
 
             assertThat(node.id()).isEqualTo(NODE_ID);
             assertThat(node.owner()).isEqualTo(OWNER_ID);
@@ -39,7 +40,7 @@ class NodeTest {
 
         @Test
         void request_should_emitNodeRequestedEvent_when_created() {
-            Node node = Node.request(NODE_ID, OWNER_ID, NETWORK, CLIENT_PAIR);
+            Node node = Node.request(NODE_ID, OWNER_ID, NETWORK, CLIENT_PAIR, OPTIONS);
 
             List<NodeDomainEvent> events = node.pullEvents();
 
@@ -58,25 +59,25 @@ class NodeTest {
 
         @Test
         void request_should_throw_when_nodeIdIsNull() {
-            assertThatThrownBy(() -> Node.request(null, OWNER_ID, NETWORK, CLIENT_PAIR))
+            assertThatThrownBy(() -> Node.request(null, OWNER_ID, NETWORK, CLIENT_PAIR, OPTIONS))
                     .isInstanceOf(NullPointerException.class);
         }
 
         @Test
         void request_should_throw_when_ownerIsNull() {
-            assertThatThrownBy(() -> Node.request(NODE_ID, null, NETWORK, CLIENT_PAIR))
+            assertThatThrownBy(() -> Node.request(NODE_ID, null, NETWORK, CLIENT_PAIR, OPTIONS))
                     .isInstanceOf(NullPointerException.class);
         }
 
         @Test
         void request_should_throw_when_networkIsNull() {
-            assertThatThrownBy(() -> Node.request(NODE_ID, OWNER_ID, null, CLIENT_PAIR))
+            assertThatThrownBy(() -> Node.request(NODE_ID, OWNER_ID, null, CLIENT_PAIR, OPTIONS))
                     .isInstanceOf(NullPointerException.class);
         }
 
         @Test
         void request_should_throw_when_clientPairIsNull() {
-            assertThatThrownBy(() -> Node.request(NODE_ID, OWNER_ID, NETWORK, null))
+            assertThatThrownBy(() -> Node.request(NODE_ID, OWNER_ID, NETWORK, null, OPTIONS))
                     .isInstanceOf(NullPointerException.class);
         }
     }
@@ -498,7 +499,7 @@ class NodeTest {
 
         @Test
         void pullEvents_should_returnEventsInOrder_alongFullHappyPath() {
-            Node node = Node.request(NODE_ID, OWNER_ID, NETWORK, CLIENT_PAIR);
+            Node node = Node.request(NODE_ID, OWNER_ID, NETWORK, CLIENT_PAIR, OPTIONS);
             node.startProvisioning(DEPLOYMENT_REF);
             node.markSyncing();
             node.markReady(ENDPOINT);
@@ -513,7 +514,7 @@ class NodeTest {
     }
 
     private static Node newRequestedNode() {
-        return Node.request(NODE_ID, OWNER_ID, NETWORK, CLIENT_PAIR);
+        return Node.request(NODE_ID, OWNER_ID, NETWORK, CLIENT_PAIR, OPTIONS);
     }
 
     private static Node nodeInProvisioning() {

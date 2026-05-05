@@ -1,26 +1,45 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.config;
 
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ContainerInspector;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DepositCliKeyGenerator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerJavaContainerInspector;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerOrchestrationAdapter;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerProperties;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerRefResolver;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthdShellRunner;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthdValidatorKeyImporter;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.GitLsRemoteClient;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.LocalKeystoreArchiver;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.PortAllocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ProcessEthdShellRunner;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ProcessGitLsRemoteClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.jsonrpc.HttpBlockchainProbeAdapter;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DownloadValidatorKeysUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GetNodeUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ImportValidatorKeysUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ListNodesByOwnerUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ListValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ProvisionNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ReconcileNodeStatusUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.TerminateNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.BlockchainProbePort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.DomainEventPublisher;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeOrchestrationPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeRepository;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyArchiverPort;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyGeneratorPort;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyImporterPort;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyRepository;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.DownloadValidatorKeysService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.GenerateValidatorKeysService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.GetNodeService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ImportValidatorKeysService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ListNodesByOwnerService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ListValidatorKeysService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ProvisionNodeService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ReconcileNodeStatusService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.TerminateNodeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
@@ -69,6 +88,62 @@ public class NodeLifecycleConfiguration {
     @Bean
     GetNodeUseCase getNodeUseCase(NodeRepository repository) {
         return new GetNodeService(repository);
+    }
+
+    @Bean
+    ListNodesByOwnerUseCase listNodesByOwnerUseCase(NodeRepository repository) {
+        return new ListNodesByOwnerService(repository);
+    }
+
+    @Bean
+    TerminateNodeUseCase terminateNodeUseCase(
+            NodeRepository repository,
+            NodeOrchestrationPort orchestration,
+            DomainEventPublisher publisher,
+            @Qualifier("nodeProvisionExecutor") Executor executor) {
+        return new TerminateNodeService(repository, orchestration, publisher, executor);
+    }
+
+    @Bean
+    ValidatorKeyImporterPort validatorKeyImporterPort(EthdShellRunner shell, ObjectMapper mapper) {
+        return new EthdValidatorKeyImporter(shell, mapper);
+    }
+
+    @Bean
+    ListValidatorKeysUseCase listValidatorKeysUseCase(
+            NodeRepository nodes, ValidatorKeyRepository keys) {
+        return new ListValidatorKeysService(nodes, keys);
+    }
+
+    @Bean
+    ImportValidatorKeysUseCase importValidatorKeysUseCase(
+            NodeRepository nodes, ValidatorKeyRepository keys, ValidatorKeyImporterPort importer) {
+        return new ImportValidatorKeysService(nodes, keys, importer);
+    }
+
+    @Bean
+    ValidatorKeyGeneratorPort validatorKeyGeneratorPort(ObjectMapper mapper) {
+        return new DepositCliKeyGenerator(mapper);
+    }
+
+    @Bean
+    GenerateValidatorKeysUseCase generateValidatorKeysUseCase(
+            NodeRepository nodes,
+            ValidatorKeyRepository keys,
+            ValidatorKeyGeneratorPort generator,
+            ValidatorKeyImporterPort importer) {
+        return new GenerateValidatorKeysService(nodes, keys, generator, importer);
+    }
+
+    @Bean
+    ValidatorKeyArchiverPort validatorKeyArchiverPort(ObjectMapper mapper) {
+        return new LocalKeystoreArchiver(mapper);
+    }
+
+    @Bean
+    DownloadValidatorKeysUseCase downloadValidatorKeysUseCase(
+            NodeRepository nodes, ValidatorKeyArchiverPort archiver) {
+        return new DownloadValidatorKeysService(nodes, archiver);
     }
 
     @Bean

@@ -74,7 +74,21 @@ async function refresh() {
                         }}
                     </span>
                 </NuxtLink>
-                <NodeStatusBadge :status="node.status" />
+                <div class="flex items-center gap-2">
+                    <span
+                        v-if="node.options.validator"
+                        class="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-800 ring-1 ring-inset ring-violet-200"
+                    >
+                        Validator
+                    </span>
+                    <span
+                        v-if="node.options.mevBoost"
+                        class="inline-flex items-center rounded-full bg-fuchsia-100 px-2 py-0.5 text-[10px] font-medium text-fuchsia-800 ring-1 ring-inset ring-fuchsia-200"
+                    >
+                        MEV
+                    </span>
+                    <NodeStatusBadge :status="node.status" />
+                </div>
             </li>
         </ul>
     </section>

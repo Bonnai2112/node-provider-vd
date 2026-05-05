@@ -64,13 +64,14 @@ class EthDockerOrchestrationAdapterIT {
                         new NodeId(UUID.randomUUID()),
                         new OwnerId(UUID.randomUUID()),
                         Network.HOODI,
-                        ClientPair.besuTeku());
+                        ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults());
 
         DeploymentRef ref = adapter.deploy(spec);
         try {
             RuntimeStatus status = adapter.getDeploymentStatus(ref);
-            assertThat(status)
-                    .isInstanceOfAny(RuntimeStatus.Running.class, RuntimeStatus.Starting.class);
+            assertThat(status).isInstanceOf(RuntimeStatus.Healthy.class);
         } finally {
             adapter.tearDown(ref);
         }

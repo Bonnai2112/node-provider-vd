@@ -8,25 +8,19 @@ import org.junit.jupiter.api.Test;
 
 class NodeSpecTest {
 
-    private static NodeSpec sample() {
-        return new NodeSpec(
-                new NodeId(UUID.randomUUID()),
-                new OwnerId(UUID.randomUUID()),
-                Network.HOODI,
-                ClientPair.besuTeku());
-    }
-
     @Test
     void constructor_should_exposeAllFields_when_allProvided() {
         NodeId id = new NodeId(UUID.randomUUID());
         OwnerId owner = new OwnerId(UUID.randomUUID());
+        NodeOptions options = NodeOptions.defaults();
 
-        NodeSpec spec = new NodeSpec(id, owner, Network.SEPOLIA, ClientPair.besuTeku());
+        NodeSpec spec = new NodeSpec(id, owner, Network.SEPOLIA, ClientPair.besuTeku(), options);
 
         assertThat(spec.nodeId()).isEqualTo(id);
         assertThat(spec.owner()).isEqualTo(owner);
         assertThat(spec.network()).isEqualTo(Network.SEPOLIA);
         assertThat(spec.clientPair()).isEqualTo(ClientPair.besuTeku());
+        assertThat(spec.options()).isEqualTo(options);
     }
 
     @Test
@@ -37,7 +31,8 @@ class NodeSpecTest {
                                         null,
                                         new OwnerId(UUID.randomUUID()),
                                         Network.HOODI,
-                                        ClientPair.besuTeku()))
+                                        ClientPair.besuTeku(),
+                                        NodeOptions.defaults()))
                 .isInstanceOf(NullPointerException.class);
     }
 
@@ -49,7 +44,8 @@ class NodeSpecTest {
                                         new NodeId(UUID.randomUUID()),
                                         null,
                                         Network.HOODI,
-                                        ClientPair.besuTeku()))
+                                        ClientPair.besuTeku(),
+                                        NodeOptions.defaults()))
                 .isInstanceOf(NullPointerException.class);
     }
 
@@ -61,7 +57,8 @@ class NodeSpecTest {
                                         new NodeId(UUID.randomUUID()),
                                         new OwnerId(UUID.randomUUID()),
                                         null,
-                                        ClientPair.besuTeku()))
+                                        ClientPair.besuTeku(),
+                                        NodeOptions.defaults()))
                 .isInstanceOf(NullPointerException.class);
     }
 
@@ -73,6 +70,20 @@ class NodeSpecTest {
                                         new NodeId(UUID.randomUUID()),
                                         new OwnerId(UUID.randomUUID()),
                                         Network.HOODI,
+                                        null,
+                                        NodeOptions.defaults()))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void constructor_should_throw_when_optionsAreNull() {
+        assertThatThrownBy(
+                        () ->
+                                new NodeSpec(
+                                        new NodeId(UUID.randomUUID()),
+                                        new OwnerId(UUID.randomUUID()),
+                                        Network.HOODI,
+                                        ClientPair.besuTeku(),
                                         null))
                 .isInstanceOf(NullPointerException.class);
     }

@@ -1,21 +1,30 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service;
 
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ConsensusSyncStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.DeploymentRef;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Endpoint;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ExecutionSyncStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.JsonRpcEndpoint;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.LastObservation;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.LayerState;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Node;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.RuntimeStatus;
-import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.SyncStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.event.NodeDomainEvent;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ReconcileNodeStatusUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.BlockchainProbePort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.DomainEventPublisher;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeOrchestrationPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeRepository;
+import java.net.URI;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseCase {
 
@@ -23,16 +32,27 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
     private final NodeOrchestrationPort orchestration;
     private final BlockchainProbePort probe;
     private final DomainEventPublisher publisher;
+    private final Clock clock;
 
     public ReconcileNodeStatusService(
             NodeRepository repository,
             NodeOrchestrationPort orchestration,
             BlockchainProbePort probe,
             DomainEventPublisher publisher) {
+        this(repository, orchestration, probe, publisher, Clock.systemUTC());
+    }
+
+    public ReconcileNodeStatusService(
+            NodeRepository repository,
+            NodeOrchestrationPort orchestration,
+            BlockchainProbePort probe,
+            DomainEventPublisher publisher,
+            Clock clock) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.orchestration = Objects.requireNonNull(orchestration, "orchestration");
         this.probe = Objects.requireNonNull(probe, "probe");
         this.publisher = Objects.requireNonNull(publisher, "publisher");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override
@@ -49,12 +69,38 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
         }
         RuntimeStatus runtime = orchestration.getDeploymentStatus(ref);
         Optional<JsonRpcEndpoint> elEndpoint = orchestration.endpointFor(ref);
-        SyncStatus sync = elEndpoint.map(probe::probeSync).orElse(new SyncStatus.NotSyncing());
-        int peers = elEndpoint.map(probe::probePeers).orElse(0);
+        Optional<URI> clEndpoint = orchestration.clRestEndpointFor(ref);
+        Optional<ExecutionSyncStatus> elSync = Optional.empty();
+        OptionalInt peers = OptionalInt.empty();
+        Optional<ConsensusSyncStatus> clSync = Optional.empty();
+        if (elEndpoint.isPresent()) {
+            elSync = probe.probeElSync(elEndpoint.get());
+            peers = probe.probePeers(elEndpoint.get());
+        }
+        if (clEndpoint.isPresent()) {
+            clSync = probe.probeClSync(clEndpoint.get());
+        }
 
-        boolean changed = applyTransition(node, runtime, sync, peers, elEndpoint);
+        Instant now = clock.instant();
+        Optional<LastObservation> previous = node.lastObservation();
+        OptionalDouble elBps = elBlocksPerSecond(previous, elSync, now);
+        OptionalDouble clSps = clSlotsPerSecond(previous, clSync, now);
+        // Sticky: a transient probe failure (ConnectException, 5xx) shouldn't blank out the
+        // value we already showed at the previous tick — the API would flicker null otherwise.
+        Optional<ExecutionSyncStatus> stickyElSync =
+                elSync.isPresent() ? elSync : previous.flatMap(LastObservation::elSync);
+        Optional<ConsensusSyncStatus> stickyClSync =
+                clSync.isPresent() ? clSync : previous.flatMap(LastObservation::clSync);
+        OptionalInt stickyPeers =
+                peers.isPresent()
+                        ? peers
+                        : previous.map(LastObservation::peers).orElse(OptionalInt.empty());
+        node.observe(
+                new LastObservation(stickyElSync, stickyClSync, elBps, clSps, stickyPeers, now));
+        boolean changed = applyTransition(node, runtime, elSync, clSync, peers, elEndpoint);
+        // We always persist so the observation is saved even when no transition fired.
+        repository.save(node);
         if (changed) {
-            repository.save(node);
             List<NodeDomainEvent> events = node.pullEvents();
             events.forEach(publisher::publish);
         }
@@ -63,48 +109,54 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
     private static boolean applyTransition(
             Node node,
             RuntimeStatus runtime,
-            SyncStatus sync,
-            int peers,
+            Optional<ExecutionSyncStatus> elSync,
+            Optional<ConsensusSyncStatus> clSync,
+            OptionalInt peers,
             Optional<JsonRpcEndpoint> elEndpoint) {
         return switch (node.status()) {
             case NodeStatus.Provisioning _ -> reconcileFromProvisioning(node, runtime);
             case NodeStatus.Syncing _ ->
-                    reconcileFromSyncing(node, runtime, sync, peers, elEndpoint);
-            case NodeStatus.Ready _ -> reconcileFromReady(node, runtime, sync, peers);
+                    reconcileFromSyncing(node, runtime, elSync, clSync, peers, elEndpoint);
+            case NodeStatus.Ready _ -> reconcileFromReady(node, runtime, elSync, clSync, peers);
             case NodeStatus.Degraded _ ->
-                    reconcileFromDegraded(node, runtime, sync, peers, elEndpoint);
+                    reconcileFromDegraded(node, runtime, elSync, clSync, peers, elEndpoint);
             default -> false;
         };
     }
 
     private static boolean reconcileFromProvisioning(Node node, RuntimeStatus runtime) {
-        return switch (runtime) {
-            case RuntimeStatus.Running _ -> {
-                node.markSyncing();
-                yield true;
-            }
-            case RuntimeStatus.Crashed c -> {
-                node.fail("container crashed during provisioning: " + c.reason());
-                yield true;
-            }
-            default -> false;
-        };
+        if (!(runtime instanceof RuntimeStatus.Healthy h)) {
+            return false;
+        }
+        if (coreFault(h)) {
+            node.fail(RuntimeStatus.formatLayers(h.el(), h.cl(), h.validator()));
+            return true;
+        }
+        if (bothRunning(h)) {
+            node.markSyncing();
+            return true;
+        }
+        return false;
     }
 
     private static boolean reconcileFromSyncing(
             Node node,
             RuntimeStatus runtime,
-            SyncStatus sync,
-            int peers,
+            Optional<ExecutionSyncStatus> elSync,
+            Optional<ConsensusSyncStatus> clSync,
+            OptionalInt peers,
             Optional<JsonRpcEndpoint> elEndpoint) {
-        if (runtime instanceof RuntimeStatus.Crashed c) {
-            node.fail("container crashed while syncing: " + c.reason());
+        if (!(runtime instanceof RuntimeStatus.Healthy h)) {
+            return false;
+        }
+        if (coreFault(h)) {
+            node.fail(RuntimeStatus.formatLayers(h.el(), h.cl(), h.validator()));
             return true;
         }
-        if (runtime instanceof RuntimeStatus.Running
-                && sync instanceof SyncStatus.Synced
-                && peers >= 1
-                && elEndpoint.isPresent()) {
+        // Ready criterion is relaxed to EL synced + peers; CL sync and validator state are
+        // observed but do not gate the transition (a validator can be idle while keys are
+        // being imported).
+        if (bothRunning(h) && isElSynced(elSync) && hasPeers(peers) && elEndpoint.isPresent()) {
             node.markReady(new Endpoint(elEndpoint.get().uri()));
             return true;
         }
@@ -112,15 +164,25 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
     }
 
     private static boolean reconcileFromReady(
-            Node node, RuntimeStatus runtime, SyncStatus sync, int peers) {
-        if (runtime instanceof RuntimeStatus.Crashed c) {
-            node.markDegraded("container crashed: " + c.reason());
+            Node node,
+            RuntimeStatus runtime,
+            Optional<ExecutionSyncStatus> elSync,
+            Optional<ConsensusSyncStatus> clSync,
+            OptionalInt peers) {
+        if (!(runtime instanceof RuntimeStatus.Healthy h)) {
+            return false;
+        }
+        if (coreFault(h) || coreTransient(h)) {
+            node.markDegraded(RuntimeStatus.formatLayers(h.el(), h.cl(), h.validator()));
             return true;
         }
-        if (runtime instanceof RuntimeStatus.Running
-                && (!(sync instanceof SyncStatus.Synced) || peers == 0)) {
-            node.markDegraded(degradedReason(sync, peers));
-            return true;
+        // EL+CL both running. Probe failures (Optional.empty) are transient, don't degrade.
+        if (elSync.isPresent() && peers.isPresent()) {
+            String reason = degradedReason(elSync.get(), peers.getAsInt());
+            if (reason != null) {
+                node.markDegraded(reason);
+                return true;
+            }
         }
         return false;
     }
@@ -128,23 +190,103 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
     private static boolean reconcileFromDegraded(
             Node node,
             RuntimeStatus runtime,
-            SyncStatus sync,
-            int peers,
+            Optional<ExecutionSyncStatus> elSync,
+            Optional<ConsensusSyncStatus> clSync,
+            OptionalInt peers,
             Optional<JsonRpcEndpoint> elEndpoint) {
-        if (runtime instanceof RuntimeStatus.Running
-                && sync instanceof SyncStatus.Synced
-                && peers >= 1
-                && elEndpoint.isPresent()) {
+        if (!(runtime instanceof RuntimeStatus.Healthy h)) {
+            return false;
+        }
+        if (bothRunning(h) && isElSynced(elSync) && hasPeers(peers) && elEndpoint.isPresent()) {
             node.markReady(new Endpoint(elEndpoint.get().uri()));
             return true;
         }
         return false;
     }
 
-    private static String degradedReason(SyncStatus sync, int peers) {
+    private static boolean bothRunning(RuntimeStatus.Healthy h) {
+        return h.el() instanceof LayerState.Running && h.cl() instanceof LayerState.Running;
+    }
+
+    private static boolean coreFault(RuntimeStatus.Healthy h) {
+        return isFault(h.el()) || isFault(h.cl());
+    }
+
+    private static boolean coreTransient(RuntimeStatus.Healthy h) {
+        return h.el() instanceof LayerState.Starting || h.cl() instanceof LayerState.Starting;
+    }
+
+    private static boolean isFault(LayerState s) {
+        return s instanceof LayerState.Crashed || s instanceof LayerState.Absent;
+    }
+
+    private static boolean isElSynced(Optional<ExecutionSyncStatus> sync) {
+        return sync.isPresent() && sync.get() instanceof ExecutionSyncStatus.Synced;
+    }
+
+    private static boolean hasPeers(OptionalInt peers) {
+        return peers.isPresent() && peers.getAsInt() >= 1;
+    }
+
+    private static OptionalDouble elBlocksPerSecond(
+            Optional<LastObservation> previous,
+            Optional<ExecutionSyncStatus> current,
+            Instant now) {
+        if (previous.isEmpty() || current.isEmpty()) {
+            return OptionalDouble.empty();
+        }
+        if (!(current.get() instanceof ExecutionSyncStatus.Syncing curSyncing)) {
+            return OptionalDouble.empty();
+        }
+        if (previous.get().elSync().isEmpty()
+                || !(previous.get().elSync().get() instanceof ExecutionSyncStatus.Syncing prv)) {
+            return OptionalDouble.empty();
+        }
+        double dtSeconds = Duration.between(previous.get().observedAt(), now).toMillis() / 1000.0d;
+        if (dtSeconds <= 0.0d) {
+            return OptionalDouble.empty();
+        }
+        long delta = curSyncing.currentBlock() - prv.currentBlock();
+        if (delta < 0) {
+            return OptionalDouble.empty();
+        }
+        return OptionalDouble.of(delta / dtSeconds);
+    }
+
+    private static OptionalDouble clSlotsPerSecond(
+            Optional<LastObservation> previous,
+            Optional<ConsensusSyncStatus> current,
+            Instant now) {
+        if (previous.isEmpty() || current.isEmpty()) {
+            return OptionalDouble.empty();
+        }
+        if (!(current.get() instanceof ConsensusSyncStatus.Syncing curSyncing)) {
+            return OptionalDouble.empty();
+        }
+        if (previous.get().clSync().isEmpty()
+                || !(previous.get().clSync().get() instanceof ConsensusSyncStatus.Syncing prv)) {
+            return OptionalDouble.empty();
+        }
+        double dtSeconds = Duration.between(previous.get().observedAt(), now).toMillis() / 1000.0d;
+        if (dtSeconds <= 0.0d) {
+            return OptionalDouble.empty();
+        }
+        long curCaughtUp = curSyncing.headSlot() - curSyncing.syncDistance();
+        long prvCaughtUp = prv.headSlot() - prv.syncDistance();
+        long delta = curCaughtUp - prvCaughtUp;
+        if (delta < 0) {
+            return OptionalDouble.empty();
+        }
+        return OptionalDouble.of(delta / dtSeconds);
+    }
+
+    private static String degradedReason(ExecutionSyncStatus elSync, int peers) {
         if (peers == 0) {
             return "no peers";
         }
-        return "sync regressed: " + sync.getClass().getSimpleName();
+        if (!(elSync instanceof ExecutionSyncStatus.Synced)) {
+            return "EL sync regressed: " + elSync.getClass().getSimpleName();
+        }
+        return null;
     }
 }

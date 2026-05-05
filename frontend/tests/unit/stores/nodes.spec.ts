@@ -1,10 +1,15 @@
-import { setActivePinia, createPinia } from 'pinia';
+import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useNodesStore } from '~/stores/nodes';
 import type { NodesApi } from '~/composables/useNodesApi';
-import type { CreateNodeRequest, NodeView } from '~/types/node';
+import { useNodesStore } from '~/stores/nodes';
+import {
+    DEFAULT_NODE_OPTIONS,
+    type CreateNodeRequest,
+    type NodeView,
+    type ValidatorKey,
+} from '~/types/node';
 
-const OWNER = '11111111-1111-1111-1111-111111111111';
+const OWNER = '21111111-1111-1111-1111-111111111111';
 
 function makeNode(overrides: Partial<NodeView> = {}): NodeView {
     return {
@@ -16,6 +21,11 @@ function makeNode(overrides: Partial<NodeView> = {}): NodeView {
         status: 'READY',
         endpoint: 'http://localhost:8545',
         reason: null,
+        options: DEFAULT_NODE_OPTIONS,
+        elSync: null,
+        clSync: null,
+        peers: null,
+        lastObservedAt: null,
         ...overrides,
     };
 }
@@ -26,6 +36,26 @@ function makeApi(overrides: Partial<NodesApi> = {}): NodesApi {
         get: vi.fn(),
         create: vi.fn(),
         terminate: vi.fn(),
+        listValidatorKeys: vi.fn(),
+        generateValidatorKeys: vi.fn(),
+        importValidatorKeys: vi.fn(),
+        ...overrides,
+    };
+}
+
+const FEE_RECIPIENT = '0x' + '1'.repeat(40);
+
+function baseRequest(overrides: Partial<CreateNodeRequest> = {}): CreateNodeRequest {
+    return {
+        network: 'SEPOLIA',
+        executionLayer: 'BESU',
+        consensusLayer: 'TEKU',
+        validator: false,
+        mevBoost: false,
+        feeRecipient: null,
+        graffiti: null,
+        mevMinBid: null,
+        mevBuildFactor: null,
         ...overrides,
     };
 }
@@ -83,21 +113,31 @@ describe('useNodesStore', () => {
             create: vi.fn().mockResolvedValue(accepted),
         });
         const store = useNodesStore();
-        const req: CreateNodeRequest = {
-            ownerId: OWNER,
-            network: 'SEPOLIA',
-            executionLayer: 'BESU',
-            consensusLayer: 'TEKU',
-        };
 
-        const result = await store.create(api, req);
+        const result = await store.create(
+            api,
+            OWNER,
+            baseRequest({
+                validator: true,
+                mevBoost: true,
+                feeRecipient: FEE_RECIPIENT,
+                graffiti: 'hello',
+                mevBuildFactor: 100,
+            }),
+        );
 
         expect(result).toEqual(accepted);
         const stored = store.get(accepted.id);
         expect(stored).toBeDefined();
         expect(stored?.status).toBe('REQUESTED');
         expect(stored?.network).toBe('SEPOLIA');
+        expect(stored?.ownerId).toBe(OWNER);
         expect(stored?.endpoint).toBeNull();
+        expect(stored?.options.validator).toBe(true);
+        expect(stored?.options.mevBoost).toBe(true);
+        expect(stored?.options.feeRecipient).toBe(FEE_RECIPIENT);
+        expect(stored?.options.graffiti).toBe('hello');
+        expect(stored?.options.mevBuildFactor).toBe(100);
     });
 
     it('terminate_should_mark_existing_node_TERMINATING_when_api_succeeds', async () => {
@@ -112,5 +152,44 @@ describe('useNodesStore', () => {
 
         expect(store.get(node.id)?.status).toBe('TERMINATING');
         expect(api.terminate).toHaveBeenCalledWith(node.id);
+    });
+
+    it('fetchValidatorKeys_should_store_keys_for_node_when_api_returns', async () => {
+        const keys: ValidatorKey[] = [
+            {
+                id: 'k1',
+                pubkey: '0xabc',
+                importedAt: '2026-05-04T10:00:00Z',
+            },
+        ];
+        const api = makeApi({
+            listValidatorKeys: vi.fn().mockResolvedValue(keys),
+        });
+        const store = useNodesStore();
+
+        const result = await store.fetchValidatorKeys(api, 'node-1');
+
+        expect(result).toEqual(keys);
+        expect(store.keysFor('node-1')).toEqual(keys);
+        expect(store.keysError).toBeNull();
+    });
+
+    it('appendValidatorKeys_should_dedupe_by_id_when_called_twice', () => {
+        const store = useNodesStore();
+        const k1: ValidatorKey = {
+            id: 'k1',
+            pubkey: '0xabc',
+            importedAt: '2026-05-04T10:00:00Z',
+        };
+        const k2: ValidatorKey = {
+            id: 'k2',
+            pubkey: '0xdef',
+            importedAt: '2026-05-04T10:01:00Z',
+        };
+
+        store.appendValidatorKeys('node-1', [k1]);
+        store.appendValidatorKeys('node-1', [k1, k2]);
+
+        expect(store.keysFor('node-1')).toEqual([k1, k2]);
     });
 });

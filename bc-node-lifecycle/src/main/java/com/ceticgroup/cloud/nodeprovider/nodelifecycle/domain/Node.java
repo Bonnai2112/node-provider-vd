@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class Node {
 
@@ -16,21 +17,26 @@ public final class Node {
     private final OwnerId owner;
     private final Network network;
     private final ClientPair clientPair;
+    private final NodeOptions options;
     private final List<NodeDomainEvent> pendingEvents = new ArrayList<>();
 
     private NodeStatus status;
     private DeploymentRef deploymentRef;
+    private LastObservation lastObservation;
 
-    private Node(NodeId id, OwnerId owner, Network network, ClientPair clientPair) {
+    private Node(
+            NodeId id, OwnerId owner, Network network, ClientPair clientPair, NodeOptions options) {
         this.id = Objects.requireNonNull(id, "id");
         this.owner = Objects.requireNonNull(owner, "owner");
         this.network = Objects.requireNonNull(network, "network");
         this.clientPair = Objects.requireNonNull(clientPair, "clientPair");
+        this.options = Objects.requireNonNull(options, "options");
         this.status = new NodeStatus.Requested();
     }
 
-    public static Node request(NodeId id, OwnerId owner, Network network, ClientPair clientPair) {
-        Node node = new Node(id, owner, network, clientPair);
+    public static Node request(
+            NodeId id, OwnerId owner, Network network, ClientPair clientPair, NodeOptions options) {
+        Node node = new Node(id, owner, network, clientPair, options);
         node.pendingEvents.add(new NodeRequested(id, owner, network, clientPair, Instant.now()));
         return node;
     }
@@ -40,12 +46,35 @@ public final class Node {
             OwnerId owner,
             Network network,
             ClientPair clientPair,
+            NodeOptions options,
             NodeStatus status,
             DeploymentRef deploymentRef) {
-        Node node = new Node(id, owner, network, clientPair);
+        Node node = new Node(id, owner, network, clientPair, options);
         node.status = Objects.requireNonNull(status, "status");
         node.deploymentRef = deploymentRef;
         return node;
+    }
+
+    public static Node restore(
+            NodeId id,
+            OwnerId owner,
+            Network network,
+            ClientPair clientPair,
+            NodeOptions options,
+            NodeStatus status,
+            DeploymentRef deploymentRef,
+            LastObservation lastObservation) {
+        Node node = restore(id, owner, network, clientPair, options, status, deploymentRef);
+        node.lastObservation = lastObservation;
+        return node;
+    }
+
+    public void observe(LastObservation observation) {
+        this.lastObservation = Objects.requireNonNull(observation, "observation");
+    }
+
+    public Optional<LastObservation> lastObservation() {
+        return Optional.ofNullable(lastObservation);
     }
 
     public void startProvisioning(DeploymentRef ref) {
@@ -121,6 +150,10 @@ public final class Node {
 
     public ClientPair clientPair() {
         return clientPair;
+    }
+
+    public NodeOptions options() {
+        return options;
     }
 
     public NodeStatus status() {

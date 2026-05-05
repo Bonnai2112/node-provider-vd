@@ -37,13 +37,24 @@ public final class ProvisionNodeService implements ProvisionNodeUseCase {
     @Override
     public NodeId provision(ProvisionNodeCommand command) {
         Objects.requireNonNull(command, "command");
-        rejectValidatorClients(command);
         NodeId id = new NodeId(UUID.randomUUID());
-        Node node = Node.request(id, command.owner(), command.network(), command.clientPair());
+        Node node =
+                Node.request(
+                        id,
+                        command.owner(),
+                        command.network(),
+                        command.clientPair(),
+                        command.options());
         repository.save(node);
         publishPending(node);
 
-        NodeSpec spec = new NodeSpec(id, command.owner(), command.network(), command.clientPair());
+        NodeSpec spec =
+                new NodeSpec(
+                        id,
+                        command.owner(),
+                        command.network(),
+                        command.clientPair(),
+                        command.options());
         executor.execute(() -> deployAsync(id, spec));
         return id;
     }
@@ -70,13 +81,6 @@ public final class ProvisionNodeService implements ProvisionNodeUseCase {
     private void publishPending(Node node) {
         List<NodeDomainEvent> events = node.pullEvents();
         events.forEach(publisher::publish);
-    }
-
-    private static void rejectValidatorClients(ProvisionNodeCommand command) {
-        if (command.clientPair().executionLayer().isValidator()
-                || command.clientPair().consensusLayer().isValidator()) {
-            throw new IllegalArgumentException("validator clients are not supported in v1");
-        }
     }
 
     private static String safeMessage(Throwable t) {

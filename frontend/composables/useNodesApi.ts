@@ -1,7 +1,10 @@
 import type {
     CreateNodeRequest,
+    GenerateValidatorKeysRequest,
+    GenerateValidatorKeysResponse,
     NodeAcceptedResponse,
     NodeView,
+    ValidatorKey,
 } from '~/types/node';
 
 export interface NodesApi {
@@ -9,6 +12,16 @@ export interface NodesApi {
     get(id: string): Promise<NodeView>;
     create(req: CreateNodeRequest): Promise<NodeAcceptedResponse>;
     terminate(id: string): Promise<void>;
+    listValidatorKeys(nodeId: string): Promise<ValidatorKey[]>;
+    generateValidatorKeys(
+        nodeId: string,
+        req: GenerateValidatorKeysRequest,
+    ): Promise<GenerateValidatorKeysResponse>;
+    importValidatorKeys(
+        nodeId: string,
+        keystores: File[],
+        password: string,
+    ): Promise<ValidatorKey[]>;
 }
 
 export interface FetchLike {
@@ -43,6 +56,36 @@ export function createNodesApi(fetcher: FetchLike, ownerId: string): NodesApi {
                 method: 'DELETE',
                 headers,
             }),
+
+        listValidatorKeys: (nodeId) =>
+            fetcher<ValidatorKey[]>(`/api/v1/nodes/${nodeId}/validator-keys`, {
+                method: 'GET',
+                headers,
+            }),
+
+        generateValidatorKeys: (nodeId, req) =>
+            fetcher<GenerateValidatorKeysResponse>(
+                `/api/v1/nodes/${nodeId}/validator-keys/generate`,
+                {
+                    method: 'POST',
+                    headers,
+                    body: req,
+                },
+            ),
+
+        importValidatorKeys: (nodeId, keystores, password) => {
+            const form = new FormData();
+            for (const f of keystores) form.append('keystores', f, f.name);
+            form.append('password', password);
+            return fetcher<ValidatorKey[]>(
+                `/api/v1/nodes/${nodeId}/validator-keys/import`,
+                {
+                    method: 'POST',
+                    headers,
+                    body: form,
+                },
+            );
+        },
     };
 }
 

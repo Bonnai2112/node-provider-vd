@@ -1,15 +1,23 @@
 import { defineStore } from 'pinia';
-import type { CreateNodeRequest, NodeView } from '~/types/node';
+import type {
+    CreateNodeRequest,
+    NodeView,
+    ValidatorKey,
+} from '~/types/node';
+import { DEFAULT_NODE_OPTIONS } from '~/types/node';
 import type { NodesApi } from '~/composables/useNodesApi';
 
 interface State {
     byId: Record<string, NodeView>;
+    keysByNode: Record<string, ValidatorKey[]>;
     listLoading: boolean;
     listError: string | null;
     detailLoading: boolean;
     detailError: string | null;
     creating: boolean;
     createError: string | null;
+    keysLoading: boolean;
+    keysError: string | null;
 }
 
 function errorMessage(e: unknown): string {
@@ -21,12 +29,15 @@ function errorMessage(e: unknown): string {
 export const useNodesStore = defineStore('nodes', {
     state: (): State => ({
         byId: {},
+        keysByNode: {},
         listLoading: false,
         listError: null,
         detailLoading: false,
         detailError: null,
         creating: false,
         createError: null,
+        keysLoading: false,
+        keysError: null,
     }),
 
     getters: {
@@ -35,6 +46,10 @@ export const useNodesStore = defineStore('nodes', {
             (state) =>
             (id: string): NodeView | undefined =>
                 state.byId[id],
+        keysFor:
+            (state) =>
+            (nodeId: string): ValidatorKey[] =>
+                state.keysByNode[nodeId] ?? [],
     },
 
     actions: {
@@ -77,20 +92,34 @@ export const useNodesStore = defineStore('nodes', {
             }
         },
 
-        async create(api: NodesApi, req: CreateNodeRequest) {
+        async create(api: NodesApi, ownerId: string, req: CreateNodeRequest) {
             this.creating = true;
             this.createError = null;
             try {
                 const accepted = await api.create(req);
                 const optimistic: NodeView = {
                     id: accepted.id,
-                    ownerId: req.ownerId,
+                    ownerId,
                     network: req.network,
                     executionLayer: req.executionLayer,
                     consensusLayer: req.consensusLayer,
                     status: accepted.status,
                     endpoint: null,
                     reason: null,
+                    options: {
+                        ...DEFAULT_NODE_OPTIONS,
+                        validator: req.validator,
+                        mevBoost: req.mevBoost,
+                        feeRecipient:
+                            req.feeRecipient ?? DEFAULT_NODE_OPTIONS.feeRecipient,
+                        graffiti: req.graffiti,
+                        mevMinBid: req.mevMinBid,
+                        mevBuildFactor: req.mevBuildFactor,
+                    },
+                    elSync: null,
+                    clSync: null,
+                    peers: null,
+                    lastObservedAt: null,
                 };
                 this.upsert(optimistic);
                 return accepted;
@@ -108,6 +137,30 @@ export const useNodesStore = defineStore('nodes', {
             if (existing) {
                 this.byId[id] = { ...existing, status: 'TERMINATING' };
             }
+        },
+
+        async fetchValidatorKeys(api: NodesApi, nodeId: string) {
+            this.keysLoading = true;
+            this.keysError = null;
+            try {
+                const keys = await api.listValidatorKeys(nodeId);
+                this.keysByNode[nodeId] = keys;
+                return keys;
+            } catch (e) {
+                this.keysError = errorMessage(e);
+                throw e;
+            } finally {
+                this.keysLoading = false;
+            }
+        },
+
+        appendValidatorKeys(nodeId: string, keys: ValidatorKey[]) {
+            const existing = this.keysByNode[nodeId] ?? [];
+            const merged = [...existing];
+            for (const k of keys) {
+                if (!merged.some((m) => m.id === k.id)) merged.push(k);
+            }
+            this.keysByNode[nodeId] = merged;
         },
     },
 });

@@ -77,6 +77,8 @@ class JpaNodeRepositoryIT {
                         new OwnerId(UUID.randomUUID()),
                         Network.SEPOLIA,
                         ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults(),
                         new NodeStatus.Ready(new Endpoint(URI.create("https://rpc.example.com"))),
                         null);
 
@@ -103,6 +105,8 @@ class JpaNodeRepositoryIT {
                         new OwnerId(UUID.randomUUID()),
                         Network.HOODI,
                         ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults(),
                         new NodeStatus.Provisioning(),
                         new DeploymentRef(json));
 
@@ -123,6 +127,8 @@ class JpaNodeRepositoryIT {
                         new OwnerId(UUID.randomUUID()),
                         Network.HOODI,
                         ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults(),
                         new NodeStatus.Failed("docker pull timeout"),
                         null);
 
@@ -152,19 +158,25 @@ class JpaNodeRepositoryIT {
                         new NodeId(UUID.randomUUID()),
                         owner,
                         Network.HOODI,
-                        ClientPair.besuTeku()));
+                        ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults()));
         repository.save(
                 Node.request(
                         new NodeId(UUID.randomUUID()),
                         owner,
                         Network.SEPOLIA,
-                        ClientPair.besuTeku()));
+                        ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults()));
         repository.save(
                 Node.request(
                         new NodeId(UUID.randomUUID()),
                         otherOwner,
                         Network.HOODI,
-                        ClientPair.besuTeku()));
+                        ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults()));
 
         List<Node> result = repository.findByOwner(owner);
 
@@ -184,6 +196,7 @@ class JpaNodeRepositoryIT {
                 new NodeId(UUID.randomUUID()),
                 new OwnerId(UUID.randomUUID()),
                 Network.HOODI,
-                ClientPair.besuTeku());
+                ClientPair.besuTeku(),
+                com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions.defaults());
     }
 }

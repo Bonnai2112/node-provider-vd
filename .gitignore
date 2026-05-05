@@ -60,3 +60,5 @@ coverage/
 # Playwright
 playwright-report/
 test-results/
+CLAUDE.md
+TODO.md

@@ -16,8 +16,6 @@ Plateforme de démo permettant de provisionner des nœuds Ethereum testnet
 
 - Hexagonal strict, un module Maven par bounded context.
 - BC actifs: `node-lifecycle`, `rpc-gateway`, `faucet`, `tenant`.
-- Validators = HORS PÉRIMÈTRE pour cette phase. Ne jamais générer de code
-  touchant des clés de signature de validateur.
 
 ## Règles de code non négociables
 

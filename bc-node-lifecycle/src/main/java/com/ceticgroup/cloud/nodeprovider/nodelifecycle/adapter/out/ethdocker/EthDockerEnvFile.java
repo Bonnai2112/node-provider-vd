@@ -16,17 +16,19 @@ public final class EthDockerEnvFile {
 
     // eth-docker yml files don't publish RPC/WS/REST to the host by default (the project
     // expects traefik in front). For our single-host demo we ship a minimal compose override
-    // that binds the EL_RPC/EL_WS/CL_REST ports declared in .env to 127.0.0.1.
+    // that binds host-side ports to 127.0.0.1. Container-side ports stay at eth-docker
+    // defaults (8545/8546/5052) so intra-network calls like validator -> consensus:5052
+    // keep working.
     private static final String HOST_PORTS_OVERRIDE_YAML =
             """
             services:
               execution:
                 ports:
-                  - "${HOST_IP:-127.0.0.1}:${EL_RPC_PORT}:${EL_RPC_PORT}/tcp"
-                  - "${HOST_IP:-127.0.0.1}:${EL_WS_PORT}:${EL_WS_PORT}/tcp"
+                  - "${HOST_IP:-127.0.0.1}:${EL_RPC_HOST_PORT}:8545/tcp"
+                  - "${HOST_IP:-127.0.0.1}:${EL_WS_HOST_PORT}:8546/tcp"
               consensus:
                 ports:
-                  - "${HOST_IP:-127.0.0.1}:${CL_REST_PORT}:${CL_REST_PORT}/tcp"
+                  - "${HOST_IP:-127.0.0.1}:${CL_REST_HOST_PORT}:5052/tcp"
             """;
 
     private EthDockerEnvFile() {}
@@ -52,11 +54,17 @@ public final class EthDockerEnvFile {
                         spec.options()));
         env.put("COMPOSE_PROJECT_NAME", composeProjectName);
         env.put("EL_HOST", "0.0.0.0");
-        env.put("EL_RPC_PORT", Integer.toString(ports.elRpcPort()));
-        env.put("EL_WS_PORT", Integer.toString(ports.elWsPort()));
+        // EL_RPC_HOST_PORT / EL_WS_HOST_PORT / CL_REST_HOST_PORT are *our* override variables,
+        // consumed only by host-ports.yml. Do NOT set EL_RPC_PORT / EL_WS_PORT / CL_REST_PORT
+        // here: those would be passed as --http.port / --http-port flags to geth/lighthouse and
+        // would break intra-network calls (validator -> consensus:5052, ...).
+        env.put("EL_RPC_HOST_PORT", Integer.toString(ports.elRpcPort()));
+        env.put("EL_WS_HOST_PORT", Integer.toString(ports.elWsPort()));
+        env.put("CL_REST_HOST_PORT", Integer.toString(ports.clRestPort()));
+        // P2P ports must match host-side and container-side: peers discover us by the port we
+        // announce, which is exactly what these variables configure inside the client.
         env.put("EL_P2P_PORT", Integer.toString(ports.elP2pPort()));
         env.put("ERIGON_TORRENT_PORT", Integer.toString(ports.erigonTorrentPort()));
-        env.put("CL_REST_PORT", Integer.toString(ports.clRestPort()));
         env.put("CL_P2P_PORT", Integer.toString(ports.clP2pPort()));
         env.put("CL_QUIC_PORT", Integer.toString(ports.clQuicPort()));
         // Prysm uses its own port keys but binds the same number on TCP and UDP, so they alias

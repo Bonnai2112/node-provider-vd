@@ -103,10 +103,28 @@ class EthDockerEnvFileTest {
         assertThat(yaml)
                 .contains("execution:")
                 .contains("consensus:")
-                .contains("${EL_RPC_PORT}:${EL_RPC_PORT}")
-                .contains("${EL_WS_PORT}:${EL_WS_PORT}")
-                .contains("${CL_REST_PORT}:${CL_REST_PORT}")
+                .contains("${EL_RPC_HOST_PORT}:8545")
+                .contains("${EL_WS_HOST_PORT}:8546")
+                .contains("${CL_REST_HOST_PORT}:5052")
                 .contains("${HOST_IP:-127.0.0.1}");
+    }
+
+    @Test
+    void render_should_notSetElRpcPort_so_internalDefaultIsKept() {
+        Map<String, String> env =
+                EthDockerEnvFile.render(
+                        spec(Network.HOODI, ElClient.BESU, ClClient.TEKU),
+                        PORTS,
+                        PROJECT_NAME,
+                        DEFAULTS);
+
+        // EL_RPC_PORT / EL_WS_PORT / CL_REST_PORT must NOT be set: that would propagate
+        // to --http.port / --http-port and break consensus:5052 / execution:8545 hostnames
+        // used by the validator and friends.
+        assertThat(env)
+                .doesNotContainKey("EL_RPC_PORT")
+                .doesNotContainKey("EL_WS_PORT")
+                .doesNotContainKey("CL_REST_PORT");
     }
 
     @Test
@@ -168,8 +186,8 @@ class EthDockerEnvFileTest {
                         DEFAULTS);
 
         assertThat(env)
-                .containsEntry("EL_RPC_PORT", "30100")
-                .containsEntry("EL_WS_PORT", "30101")
+                .containsEntry("EL_RPC_HOST_PORT", "30100")
+                .containsEntry("EL_WS_HOST_PORT", "30101")
                 .containsEntry("EL_P2P_PORT", "30102")
                 .containsEntry("ERIGON_TORRENT_PORT", "30103");
     }
@@ -184,7 +202,7 @@ class EthDockerEnvFileTest {
                         DEFAULTS);
 
         assertThat(env)
-                .containsEntry("CL_REST_PORT", "30104")
+                .containsEntry("CL_REST_HOST_PORT", "30104")
                 .containsEntry("CL_P2P_PORT", "30105")
                 .containsEntry("CL_QUIC_PORT", "30106");
     }
@@ -282,12 +300,12 @@ class EthDockerEnvFileTest {
                         Map.of(
                                 "ENV_VERSION", "55",
                                 "NETWORK", "mainnet",
-                                "EL_RPC_PORT", "8545",
+                                "EL_P2P_PORT", "30303",
                                 "COMPOSE_FILE", "should-be-replaced.yml"));
 
         assertThat(env)
                 .containsEntry("NETWORK", "hoodi")
-                .containsEntry("EL_RPC_PORT", "30100")
+                .containsEntry("EL_P2P_PORT", "30102")
                 .containsEntry("COMPOSE_FILE", "besu.yml:teku-cl-only.yml:host-ports.yml");
     }
 

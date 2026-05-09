@@ -10,7 +10,9 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeSpec;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
+import java.net.URI;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -68,7 +70,10 @@ class EthDockerEnvFileTest {
                         PROJECT_NAME,
                         DEFAULTS);
 
-        assertThat(env).containsEntry("COMPOSE_FILE", "besu.yml:teku-cl-only.yml:host-ports.yml");
+        assertThat(env)
+                .containsEntry(
+                        "COMPOSE_FILE",
+                        "besu.yml:teku-cl-only.yml:host-ports.yml:shared-network.yml");
     }
 
     @Test
@@ -81,11 +86,13 @@ class EthDockerEnvFileTest {
                         DEFAULTS);
 
         assertThat(env)
-                .containsEntry("COMPOSE_FILE", "geth.yml:lighthouse-cl-only.yml:host-ports.yml");
+                .containsEntry(
+                        "COMPOSE_FILE",
+                        "geth.yml:lighthouse-cl-only.yml:host-ports.yml:shared-network.yml");
     }
 
     @Test
-    void render_should_appendHostPortsOverride_to_composeFile() {
+    void render_should_appendSharedNetworkOverride_to_composeFile() {
         Map<String, String> env =
                 EthDockerEnvFile.render(
                         spec(Network.HOODI, ElClient.BESU, ClClient.TEKU),
@@ -93,7 +100,19 @@ class EthDockerEnvFileTest {
                         PROJECT_NAME,
                         DEFAULTS);
 
-        assertThat(env.get("COMPOSE_FILE")).endsWith(":host-ports.yml");
+        assertThat(env.get("COMPOSE_FILE")).endsWith(":shared-network.yml");
+    }
+
+    @Test
+    void render_should_includeHostPortsOverride_in_composeFile() {
+        Map<String, String> env =
+                EthDockerEnvFile.render(
+                        spec(Network.HOODI, ElClient.BESU, ClClient.TEKU),
+                        PORTS,
+                        PROJECT_NAME,
+                        DEFAULTS);
+
+        assertThat(env.get("COMPOSE_FILE")).contains(":host-ports.yml");
     }
 
     @Test
@@ -107,6 +126,67 @@ class EthDockerEnvFileTest {
                 .contains("${EL_WS_HOST_PORT}:8546")
                 .contains("${CL_REST_HOST_PORT}:5052")
                 .contains("${HOST_IP:-127.0.0.1}");
+    }
+
+    @Test
+    void sharedNetworkOverrideYaml_should_attachConsensusToExternalNetwork() {
+        String yaml = EthDockerEnvFile.sharedNetworkOverrideYaml();
+
+        assertThat(yaml)
+                .contains("networks:")
+                .contains("external: true")
+                .contains("name: node-provider-shared")
+                .contains("services:")
+                .contains("consensus:")
+                .contains("default: {}")
+                .contains("- node-${NODE_SHORT_ID}-consensus");
+    }
+
+    @Test
+    void render_should_setNodeShortId_to_first8CharsOfNodeId() {
+        UUID nodeId = UUID.fromString("12345678-90ab-cdef-1234-567890abcdef");
+        NodeSpec spec =
+                new NodeSpec(
+                        new NodeId(nodeId),
+                        new OwnerId(UUID.randomUUID()),
+                        Network.HOODI,
+                        new ClientPair(ElClient.BESU, ClClient.TEKU),
+                        NodeOptions.defaults());
+
+        Map<String, String> env = EthDockerEnvFile.render(spec, PORTS, PROJECT_NAME, DEFAULTS);
+
+        assertThat(env).containsEntry("NODE_SHORT_ID", "12345678");
+    }
+
+    @Test
+    void render_should_setCheckpointSyncUrl_when_overrideProvided() {
+        Map<String, String> env =
+                EthDockerEnvFile.render(
+                        spec(Network.HOODI, ElClient.BESU, ClClient.TEKU),
+                        PORTS,
+                        PROJECT_NAME,
+                        DEFAULTS,
+                        Optional.of(URI.create("http://node-deadbeef-consensus:5052")));
+
+        assertThat(env).containsEntry("CHECKPOINT_SYNC_URL", "http://node-deadbeef-consensus:5052");
+    }
+
+    @Test
+    void render_should_notTouchCheckpointSyncUrl_when_overrideEmpty() {
+        Map<String, String> defaults =
+                Map.of(
+                        "ENV_VERSION", "55",
+                        "CHECKPOINT_SYNC_URL", "https://hoodi.checkpoint.sigp.io");
+
+        Map<String, String> env =
+                EthDockerEnvFile.render(
+                        spec(Network.HOODI, ElClient.BESU, ClClient.TEKU),
+                        PORTS,
+                        PROJECT_NAME,
+                        defaults,
+                        Optional.empty());
+
+        assertThat(env).containsEntry("CHECKPOINT_SYNC_URL", "https://hoodi.checkpoint.sigp.io");
     }
 
     @Test
@@ -306,7 +386,9 @@ class EthDockerEnvFileTest {
         assertThat(env)
                 .containsEntry("NETWORK", "hoodi")
                 .containsEntry("EL_P2P_PORT", "30102")
-                .containsEntry("COMPOSE_FILE", "besu.yml:teku-cl-only.yml:host-ports.yml");
+                .containsEntry(
+                        "COMPOSE_FILE",
+                        "besu.yml:teku-cl-only.yml:host-ports.yml:shared-network.yml");
     }
 
     @Test

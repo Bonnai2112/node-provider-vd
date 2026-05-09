@@ -3,6 +3,8 @@ package com.ceticgroup.cloud.nodeprovider.nodelifecycle.config;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ContainerInspector;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DepositCliKeyGenerator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerJavaContainerInspector;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerJavaNetworkManager;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerNetworkManager;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerOrchestrationAdapter;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerProperties;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerRefResolver;
@@ -13,6 +15,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.Loc
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.PortAllocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ProcessEthdShellRunner;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ProcessGitLsRemoteClient;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.RepositoryCheckpointSyncSourceLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.jsonrpc.HttpBlockchainProbeAdapter;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DownloadValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateValidatorKeysUseCase;
@@ -24,6 +27,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ProvisionN
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ReconcileNodeStatusUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.TerminateNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.BlockchainProbePort;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.CheckpointSyncSourceLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.DomainEventPublisher;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeOrchestrationPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeRepository;
@@ -194,6 +198,16 @@ public class NodeLifecycleConfiguration {
     }
 
     @Bean
+    DockerNetworkManager dockerNetworkManager(DockerClient dockerClient) {
+        return new DockerJavaNetworkManager(dockerClient);
+    }
+
+    @Bean
+    CheckpointSyncSourceLocator checkpointSyncSourceLocator(NodeRepository nodes) {
+        return new RepositoryCheckpointSyncSourceLocator(nodes);
+    }
+
+    @Bean
     HttpClient probeHttpClient() {
         return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
     }
@@ -210,8 +224,17 @@ public class NodeLifecycleConfiguration {
             EthDockerRefResolver refResolver,
             EthdShellRunner shell,
             ContainerInspector containerInspector,
+            CheckpointSyncSourceLocator checkpointLocator,
+            DockerNetworkManager networkManager,
             ObjectMapper mapper) {
         return new EthDockerOrchestrationAdapter(
-                properties, portAllocator, refResolver, shell, containerInspector, mapper);
+                properties,
+                portAllocator,
+                refResolver,
+                shell,
+                containerInspector,
+                checkpointLocator,
+                networkManager,
+                mapper);
     }
 }

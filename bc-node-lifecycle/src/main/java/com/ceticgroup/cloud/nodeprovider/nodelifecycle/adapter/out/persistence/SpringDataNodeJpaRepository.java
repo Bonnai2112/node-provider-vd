@@ -9,4 +9,6 @@ interface SpringDataNodeJpaRepository extends JpaRepository<NodeJpaEntity, UUID>
     List<NodeJpaEntity> findByOwnerId(UUID ownerId);
 
     List<NodeJpaEntity> findByStatusKindNotIn(List<String> excludedStatusKinds);
+
+    List<NodeJpaEntity> findByNetworkAndStatusKindIn(String network, List<String> statusKinds);
 }

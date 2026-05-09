@@ -4,6 +4,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.DeploymentRef;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.JsonRpcEndpoint;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeSpec;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.RuntimeStatus;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.CheckpointSyncSourceLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeOrchestrationPort;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +22,8 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
     private final EthDockerRefResolver refResolver;
     private final EthdShellRunner shell;
     private final ContainerInspector containerInspector;
+    private final CheckpointSyncSourceLocator checkpointLocator;
+    private final DockerNetworkManager networkManager;
     private final ObjectMapper mapper;
 
     public EthDockerOrchestrationAdapter(
@@ -29,12 +32,16 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
             EthDockerRefResolver refResolver,
             EthdShellRunner shell,
             ContainerInspector containerInspector,
+            CheckpointSyncSourceLocator checkpointLocator,
+            DockerNetworkManager networkManager,
             ObjectMapper mapper) {
         this.properties = properties;
         this.portAllocator = portAllocator;
         this.refResolver = refResolver;
         this.shell = shell;
         this.containerInspector = containerInspector;
+        this.checkpointLocator = checkpointLocator;
+        this.networkManager = networkManager;
         this.mapper = mapper;
     }
 
@@ -51,12 +58,20 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
             shell.cloneIntoWorkdir(Paths.get(properties.cacheDir()), ref.tag(), workdir);
 
             Map<String, String> defaults = shell.readDefaultEnv(workdir);
-            Map<String, String> env = EthDockerEnvFile.render(spec, ports, projectName, defaults);
+            Optional<URI> checkpointOverride = checkpointLocator.findFor(spec.network());
+            Map<String, String> env =
+                    EthDockerEnvFile.render(spec, ports, projectName, defaults, checkpointOverride);
             shell.writeEnv(workdir, EthDockerEnvFile.serialize(env));
             shell.writeFile(
                     workdir,
                     EthDockerEnvFile.HOST_PORTS_OVERRIDE_FILE,
                     EthDockerEnvFile.hostPortsOverrideYaml());
+            shell.writeFile(
+                    workdir,
+                    EthDockerEnvFile.SHARED_NETWORK_OVERRIDE_FILE,
+                    EthDockerEnvFile.sharedNetworkOverrideYaml());
+
+            networkManager.ensureSharedNetworkExists(EthDockerEnvFile.SHARED_NETWORK_NAME);
 
             shell.runEthdUp(workdir);
 

@@ -3,16 +3,21 @@ package com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ElClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Network;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeSpec;
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 public final class EthDockerEnvFile {
 
     public static final String HOST_PORTS_OVERRIDE_FILE = "host-ports.yml";
     public static final String MEV_BOOST_COMPOSE_FILE = "mev-boost.yml";
+    public static final String SHARED_NETWORK_OVERRIDE_FILE = "shared-network.yml";
+    public static final String SHARED_NETWORK_NAME = "node-provider-shared";
 
     // eth-docker yml files don't publish RPC/WS/REST to the host by default (the project
     // expects traefik in front). For our single-host demo we ship a minimal compose override
@@ -31,10 +36,34 @@ public final class EthDockerEnvFile {
                   - "${HOST_IP:-127.0.0.1}:${CL_REST_HOST_PORT}:5052/tcp"
             """;
 
+    // Connects the consensus service to a long-lived external docker network so a freshly-spawned
+    // node can use a previously-synced sibling's beacon REST as CHECKPOINT_SYNC_URL. The
+    // service stays on its project default network too — without that line, validator/execution
+    // would lose intra-project connectivity to consensus.
+    private static final String SHARED_NETWORK_OVERRIDE_YAML =
+            """
+            networks:
+              shared:
+                external: true
+                name: node-provider-shared
+
+            services:
+              consensus:
+                networks:
+                  default: {}
+                  shared:
+                    aliases:
+                      - node-${NODE_SHORT_ID}-consensus
+            """;
+
     private EthDockerEnvFile() {}
 
     public static String hostPortsOverrideYaml() {
         return HOST_PORTS_OVERRIDE_YAML;
+    }
+
+    public static String sharedNetworkOverrideYaml() {
+        return SHARED_NETWORK_OVERRIDE_YAML;
     }
 
     public static Map<String, String> render(
@@ -42,6 +71,15 @@ public final class EthDockerEnvFile {
             AllocatedPorts ports,
             String composeProjectName,
             Map<String, String> defaults) {
+        return render(spec, ports, composeProjectName, defaults, Optional.empty());
+    }
+
+    public static Map<String, String> render(
+            NodeSpec spec,
+            AllocatedPorts ports,
+            String composeProjectName,
+            Map<String, String> defaults,
+            Optional<URI> checkpointSyncOverride) {
         // Start from default.env so values like LOG_LEVEL, EL_NODE, ... flow through; eth-docker
         // compose files reference many of these and lighthouse/geth crash if some are blank.
         Map<String, String> env = new LinkedHashMap<>(defaults);
@@ -53,6 +91,7 @@ public final class EthDockerEnvFile {
                         spec.clientPair().consensusLayer(),
                         spec.options()));
         env.put("COMPOSE_PROJECT_NAME", composeProjectName);
+        env.put("NODE_SHORT_ID", shortId(spec.nodeId()));
         env.put("EL_HOST", "0.0.0.0");
         // EL_RPC_HOST_PORT / EL_WS_HOST_PORT / CL_REST_HOST_PORT are *our* override variables,
         // consumed only by host-ports.yml. Do NOT set EL_RPC_PORT / EL_WS_PORT / CL_REST_PORT
@@ -84,7 +123,16 @@ public final class EthDockerEnvFile {
                                     ? spec.options().mevBuildFactor().getAsInt()
                                     : NodeOptions.DEFAULT_MEV_BUILD_FACTOR));
         }
+        // When a sibling beacon is already past initial sync on the same network, point this CL
+        // at it so the new node skips the long internet-side checkpoint and bootstraps in seconds
+        // off the LAN. If absent, eth-docker's default.env wins (e.g.
+        // https://hoodi.checkpoint.sigp.io).
+        checkpointSyncOverride.ifPresent(uri -> env.put("CHECKPOINT_SYNC_URL", uri.toString()));
         return Map.copyOf(env);
+    }
+
+    static String shortId(NodeId id) {
+        return id.value().toString().substring(0, 8);
     }
 
     public static String serialize(Map<String, String> env) {
@@ -104,6 +152,7 @@ public final class EthDockerEnvFile {
             sb.append(':').append(MEV_BOOST_COMPOSE_FILE);
         }
         sb.append(':').append(HOST_PORTS_OVERRIDE_FILE);
+        sb.append(':').append(SHARED_NETWORK_OVERRIDE_FILE);
         return sb.toString();
     }
 

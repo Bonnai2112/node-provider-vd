@@ -1,5 +1,6 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out;
 
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Network;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Node;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
@@ -15,4 +16,10 @@ public interface NodeRepository {
     List<Node> findByOwner(OwnerId owner);
 
     List<Node> findNonTerminal();
+
+    /**
+     * Returns nodes already past initial sync (READY) on the given network. Used to elect a local
+     * checkpoint-sync source for newly-created CL nodes — see {@code CheckpointSyncSourceLocator}.
+     */
+    List<Node> findReadyOnNetwork(Network network);
 }

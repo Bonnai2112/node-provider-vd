@@ -53,6 +53,13 @@ class JpaNodeRepository implements NodeRepository {
                 .toList();
     }
 
+    @Override
+    public List<Node> findReadyOnNetwork(Network network) {
+        return jpa.findByNetworkAndStatusKindIn(network.name(), List.of("READY")).stream()
+                .map(JpaNodeRepository::toDomain)
+                .toList();
+    }
+
     private static NodeJpaEntity toEntity(Node node) {
         NodeStatus status = node.status();
         String kind = statusKind(status);

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ContainerInspector;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerJavaContainerInspector;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerJavaNetworkManager;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerOrchestrationAdapter;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerProperties;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerRefResolver;
@@ -18,6 +19,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeSpec;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.RuntimeStatus;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.CheckpointSyncSourceLocator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
@@ -26,6 +28,7 @@ import com.github.dockerjava.zerodep.ZerodepDockerHttpClient;
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -49,6 +52,7 @@ class EthDockerOrchestrationAdapterIT {
         DockerClient docker = newDockerClient();
         ContainerInspector inspector = new DockerJavaContainerInspector(docker);
 
+        CheckpointSyncSourceLocator noLocalLeader = network -> Optional.empty();
         EthDockerOrchestrationAdapter adapter =
                 new EthDockerOrchestrationAdapter(
                         props,
@@ -57,6 +61,8 @@ class EthDockerOrchestrationAdapterIT {
                                 new ProcessGitLsRemoteClient(), Path.of(props.shaCacheFile())),
                         new ProcessEthdShellRunner(),
                         inspector,
+                        noLocalLeader,
+                        new DockerJavaNetworkManager(docker),
                         new ObjectMapper());
 
         NodeSpec spec =

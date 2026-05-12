@@ -1,0 +1,213 @@
+# Journal des décisions d'architecture et d'implémentation.
+#
+# Une entrée par arbitrage non-trivial. Chaque entrée doit pouvoir se lire
+# isolément : contexte, options, choix retenu, raison, conséquences.
+# Mettre à jour le statut (accepted / superseded / withdrawn) quand un
+# choix évolue ; ne pas supprimer l'historique.
+
+decisions:
+  - id: 2026-05-11-btrfs-el-datadir-clone
+    title: Cloner le datadir EL via snapshot btrfs pour démarrage rapide
+    status: superseded
+    superseded_by: 2026-05-11-ext4-tarball-template-restore
+    date: 2026-05-11
+    scope: bc-node-lifecycle
+    context: |
+      Le sync initial d'un EL Hoodi/Sepolia prend plusieurs heures depuis
+      zéro. Pour une plateforme de démo on veut qu'un nœud provisionné
+      soit utilisable en quelques secondes quand un nœud frère du même
+      couple (network, el-client) est déjà syncé sur la même machine.
+
+    options_envisagees:
+      - "1. Sync from scratch systématique (statu quo)"
+      - "2.a. btrfs subvolume snapshot d'un master existant — RETENU"
+      - "2.b. cp --reflink=auto depuis un master"
+      - "3. Image rootfs/tarball pré-construite, restaurée à la volée"
+
+    decision: 2.a
+
+    arbitrages:
+      - point: Source du datadir master
+        choix: Datadir d'un nœud déjà syncé sur la machine
+        raison: |
+          Réutilise les nœuds existants au lieu de maintenir un nœud
+          de référence séparé. Pas de job de warm-up à orchestrer.
+
+      - point: Mécanisme de clone
+        choix: btrfs subvolume snapshot (read-write)
+        raison: |
+          Instantané métadata-only, pas de copie de blocs. Acceptable
+          parce qu'on contrôle le FS de /var/lib/platform.
+
+      - point: Layout du datadir EL
+        choix: Tous les nœuds utilisent un subvolume btrfs bind-mounté dès le provisioning
+        raison: |
+          Cohérent avec "btrfs subvolume snapshot" qui exige un
+          subvolume source. Tout nœud Ready peut alors devenir master.
+          Abandon des docker named volumes pour l'EL.
+
+      - point: Injection dans eth-docker
+        choix: Override compose dédié datadir-bind.yml ajouté à COMPOSE_FILE
+        raison: |
+          Aligné avec host-ports.yml et shared-network.yml déjà en place.
+          Garde les fichiers d'origine d'eth-docker intacts.
+
+      - point: Trigger du clone
+        choix: Toujours si master existe pour (network, el) ; sinon fallback sync from scratch
+        raison: |
+          Transparent pour l'utilisateur. Pas de flag, pas de UI.
+
+      - point: Sélection du master
+        choix: Premier nœud Ready trouvé en DB pour (network, el)
+        raison: |
+          Calque le pattern existant de RepositoryCheckpointSyncSourceLocator.
+          Pas de table dédiée, pas de promotion explicite.
+
+      - point: Cohérence du snapshot
+        choix: Stop EL container du master → snapshot → restart EL master
+        raison: |
+          Snapshot à chaud d'un geth/besu en écriture = risque de
+          corruption. La coupure dure quelques secondes ; acceptable
+          pour un nœud de démo.
+
+    consequences:
+      - Pré-requis runtime : /var/lib/platform doit être sur btrfs
+      - Coupure de quelques secondes de l'EL du master à chaque provisioning enfant
+      - Permissions à gérer : chown du subvolume vers l'UID utilisé par les images EL d'eth-docker (10000)
+      - Provisionings concurrents sans master existant ne se coordonnent pas — les deux tombent en sync from-scratch (acceptable v1)
+      - DeploymentPayload doit porter le path host du subvolume pour le tearDown
+
+    plan_implementation:
+      pr1:
+        titre: Datadir EL toujours bind-mounté sur subvolume btrfs (sans clonage)
+        contenu:
+          - BtrfsSubvolumeManager + chemins datadir par EL client
+          - Override datadir-bind.yml rendu par EthDockerEnvFile
+          - DeploymentPayload.elDataHostPath
+          - tearDown supprime le subvolume
+          - Tests unitaires
+      pr2:
+        titre: Clonage du master au provisioning
+        contenu:
+          - Port ElDatadirMasterLocator + impl RepositoryElDatadirMasterLocator
+          - runEthdStop/runEthdStart côté EthdShellRunner
+          - Branchement stop/snapshot/start dans EthDockerOrchestrationAdapter.deploy
+          - Tests
+
+    points_tranches_seul:
+      - Chemins in-container par EL client : récupérés depuis les compose files d'eth-docker au moment de l'implémentation
+      - UID propriétaire du subvolume : 10000 (standard eth-docker)
+      - Pas de feature flag "no-btrfs" — si le FS ne le supporte pas, le provisioning échoue clairement
+
+  - id: 2026-05-11-ext4-tarball-template-restore
+    title: Restaurer le datadir EL depuis un tarball template par couple (network, el-client)
+    status: accepted
+    supersedes: 2026-05-11-btrfs-el-datadir-clone
+    date: 2026-05-11
+    scope: bc-node-lifecycle
+    context: |
+      Même objectif que la décision précédente : un nœud provisionné doit
+      être utilisable en quelques minutes plutôt qu'après plusieurs heures
+      de sync from scratch. La conversion du FS hôte en btrfs s'est
+      révélée trop coûteuse à mettre en place (root ext4 existant, pas
+      de réinstall envisagée). On retombe sur l'option 3 initialement
+      écartée : tarball pré-construit, restauré à la volée.
+
+    options_envisagees:
+      - "1. Sync from scratch systématique (statu quo)"
+      - "2.a. btrfs subvolume snapshot d'un master existant — abandonné, exige btrfs sur l'hôte"
+      - "2.b. cp --reflink=auto depuis un master — exige btrfs/xfs avec reflink"
+      - "3. Tarball pré-construit par (network, el-client), restauré au provisioning — RETENU"
+
+    decision: 3
+
+    arbitrages:
+      - point: Layout disque
+        choix: |
+          /var/lib/platform/
+            ├── templates/{network}-{el}.tar.zst
+            └── nodes/{nodeId}/data/
+        raison: |
+          Un répertoire dédié à la plateforme, hors du root applicatif.
+          Un tarball par couple parce que le format chaindata diffère
+          entre geth/besu/nethermind et entre networks.
+
+      - point: Périmètre du template
+        choix: EL uniquement
+        raison: |
+          Le CL est déjà bootstrappé rapidement via checkpoint sync sur
+          le beacon LAN (cf. commit 5bf17a3). Pas de gain à empaqueter
+          les datadirs CL.
+
+      - point: Source du tarball
+        choix: Nœud "frozen" dédié par couple (network, el-client)
+        raison: |
+          Nœud non exposé aux clients, dont on contrôle l'arrêt pour
+          produire un tarball cohérent. Évite de couper un nœud en
+          service comme le faisait l'arbitrage btrfs.
+
+      - point: Fréquence de production
+        choix: 1x par jour, offline (cron sur la machine hôte)
+        raison: |
+          Compromis fraîcheur / coût CPU. Catch-up de ~7200 blocs au
+          démarrage du nœud enfant, acceptable pour une démo.
+
+      - point: Atomicité de la mise à jour du tarball
+        choix: Écriture dans templates/{network}-{el}.tar.zst.tmp puis rename atomique
+        raison: |
+          Empêche un provisioning concurrent de lire un fichier tronqué.
+
+      - point: Trigger de la restauration
+        choix: Toujours si un tarball existe pour (network, el) ; sinon fallback sync from scratch
+        raison: |
+          Transparent pour l'utilisateur. Pas de flag, pas de UI.
+
+      - point: Mécanisme d'extraction
+        choix: zstd -d | tar -x dans nodes/{nodeId}/data avant démarrage des conteneurs
+        raison: |
+          Outils standards, pas de dépendance Java. Lancé via le shell
+          runner existant.
+
+      - point: Injection dans eth-docker
+        choix: Override compose dédié datadir-bind.yml ajouté à COMPOSE_FILE
+        raison: |
+          Inchangé par rapport à la décision btrfs : aligné avec
+          host-ports.yml et shared-network.yml.
+
+    consequences:
+      - Pré-requis runtime : /var/lib/platform existe et est writable par l'app
+      - Un nœud frozen par couple (network, el-client) à maintenir manuellement (sync continu + arrêt quotidien pour produire le tarball)
+      - Coût d'extraction au provisioning : quelques minutes (SSD) à 20+ min selon volume, vs instantané pour btrfs
+      - Espace disque : ~3x un datadir par couple actif (template + extraction en cours + nœud frozen)
+      - Catch-up de ~24h de blocs au démarrage du nœud enfant
+      - Permissions : chown nodes/{nodeId}/data vers UID 10000 (standard eth-docker) après extraction
+      - DeploymentPayload doit porter le path host du datadir pour le tearDown
+
+    plan_implementation:
+      pr1:
+        titre: Datadir EL bind-mounté sur /var/lib/platform/nodes/{nodeId}/data (sans restauration)
+        contenu:
+          - PlatformPaths + création du répertoire nodes/{nodeId}/data au provisioning
+          - Override datadir-bind.yml rendu par EthDockerEnvFile
+          - DeploymentPayload.elDataHostPath
+          - tearDown supprime le répertoire
+          - Tests unitaires
+      pr2:
+        titre: Restauration du datadir depuis le tarball template au provisioning
+        contenu:
+          - Port ElTemplateLocator + impl qui résout templates/{network}-{el}.tar.zst
+          - TarballRestorer (zstd -d | tar -x) côté shell runner
+          - Branchement locate/restore/chown dans EthDockerOrchestrationAdapter.deploy
+          - Fallback explicite si pas de template
+          - Tests
+      pr3:
+        titre: Job de production du tarball depuis le nœud frozen
+        contenu:
+          - Script shell + unit systemd timer (ou cron) côté ops
+          - Stop conteneur EL frozen → tar+zstd → rename atomique → restart
+          - Documentation du run-book pour ajouter un nouveau couple (network, el)
+
+    points_tranches_seul:
+      - Niveau de compression zstd : défaut (-3) suffisant, on optimise si besoin
+      - UID propriétaire du datadir extrait : 10000 (standard eth-docker)
+      - Pas de feature flag "no-template" — la restauration est best-effort, fallback transparent

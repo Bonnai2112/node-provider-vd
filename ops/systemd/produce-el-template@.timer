@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily build of EL datadir template tarball for %i
+
+[Timer]
+# 03:00 local time daily. Persistent=true catches up if the host was off at
+# the scheduled instant. RandomizedDelaySec spreads load if multiple couples
+# are enabled on the same box.
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=15min
+Unit=produce-el-template@%i.service
+
+[Install]
+WantedBy=timers.target

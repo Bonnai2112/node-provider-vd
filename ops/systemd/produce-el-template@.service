@@ -1,0 +1,19 @@
+[Unit]
+Description=Build EL datadir template tarball for %i
+Documentation=file:///opt/platform/ops/RUNBOOK.md
+# Wait for docker; otherwise `docker compose stop` racing with daemon startup
+# can leave the frozen node in an inconsistent state.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Per-couple env (NETWORK, EL_CLIENT, FROZEN_NODE_DIR, EL_DATA_DIR, ...) lives
+# in /etc/platform/templates/<network>-<el>.env.
+EnvironmentFile=/etc/platform/templates/%i.env
+ExecStart=/opt/platform/ops/produce-el-template.sh
+# CAP_CHOWN is needed by the platform's deploy() to chown the bind-mounted
+# datadir to UID 10000 after restoration. The producer itself doesn't chown,
+# but inherits the convention so logs are coherent.
+User=root
+TimeoutStartSec=2h

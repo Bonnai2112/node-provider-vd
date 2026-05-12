@@ -9,6 +9,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.Doc
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerOrchestrationAdapter;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerProperties;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerRefResolver;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.FsElDatadirTemplateLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.PortAllocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ProcessEthdShellRunner;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ProcessGitLsRemoteClient;
@@ -47,12 +48,16 @@ class EthDockerOrchestrationAdapterIT {
                         "v26.4.1",
                         tmp.resolve("nodes").toString(),
                         tmp.resolve("cache").toString(),
-                        tmp.resolve("cache/sha").toString());
+                        tmp.resolve("cache/sha").toString(),
+                        tmp.resolve("templates").toString());
 
         DockerClient docker = newDockerClient();
         ContainerInspector inspector = new DockerJavaContainerInspector(docker);
 
         CheckpointSyncSourceLocator noLocalLeader = network -> Optional.empty();
+        // No template directory populated → locator returns empty → from-scratch sync.
+        FsElDatadirTemplateLocator templateLocator =
+                new FsElDatadirTemplateLocator(Path.of(props.templatesDir()));
         EthDockerOrchestrationAdapter adapter =
                 new EthDockerOrchestrationAdapter(
                         props,
@@ -62,6 +67,7 @@ class EthDockerOrchestrationAdapterIT {
                         new ProcessEthdShellRunner(),
                         inspector,
                         noLocalLeader,
+                        templateLocator,
                         new DockerJavaNetworkManager(docker),
                         new ObjectMapper());
 

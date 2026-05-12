@@ -10,6 +10,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.Eth
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthDockerRefResolver;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthdShellRunner;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.EthdValidatorKeyImporter;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.FsElDatadirTemplateLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.GitLsRemoteClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.LocalKeystoreArchiver;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.PortAllocator;
@@ -29,6 +30,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.TerminateN
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.BlockchainProbePort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.CheckpointSyncSourceLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.DomainEventPublisher;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ElDatadirTemplateLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeOrchestrationPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeRepository;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyArchiverPort;
@@ -208,6 +210,11 @@ public class NodeLifecycleConfiguration {
     }
 
     @Bean
+    ElDatadirTemplateLocator elDatadirTemplateLocator(EthDockerProperties properties) {
+        return new FsElDatadirTemplateLocator(Paths.get(properties.templatesDir()));
+    }
+
+    @Bean
     HttpClient probeHttpClient() {
         return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
     }
@@ -225,6 +232,7 @@ public class NodeLifecycleConfiguration {
             EthdShellRunner shell,
             ContainerInspector containerInspector,
             CheckpointSyncSourceLocator checkpointLocator,
+            ElDatadirTemplateLocator templateLocator,
             DockerNetworkManager networkManager,
             ObjectMapper mapper) {
         return new EthDockerOrchestrationAdapter(
@@ -234,6 +242,7 @@ public class NodeLifecycleConfiguration {
                 shell,
                 containerInspector,
                 checkpointLocator,
+                templateLocator,
                 networkManager,
                 mapper);
     }

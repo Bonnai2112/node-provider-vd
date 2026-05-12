@@ -171,6 +171,22 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
         deleteRecursively(dataDir);
     }
 
+    @Override
+    public void extractTarballZstd(Path tarball, Path targetDir) throws IOException {
+        Files.createDirectories(targetDir);
+        // GNU tar's --use-compress-program lets us decompress with zstd without resorting to a
+        // shell pipe (and the associated quoting hazards). tar reads the archive itself.
+        run(
+                targetDir,
+                null,
+                "tar",
+                "--use-compress-program=zstd",
+                "-xf",
+                tarball.toString(),
+                "-C",
+                targetDir.toString());
+    }
+
     private static void deleteRecursively(Path root) throws IOException {
         if (!Files.exists(root)) {
             return;

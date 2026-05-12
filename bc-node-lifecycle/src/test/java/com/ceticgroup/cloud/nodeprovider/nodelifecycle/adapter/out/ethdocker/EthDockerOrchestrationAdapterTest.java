@@ -17,6 +17,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeSpec;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.RuntimeStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.CheckpointSyncSourceLocator;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ElDatadirTemplateLocator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.nio.file.Path;
@@ -38,13 +39,15 @@ class EthDockerOrchestrationAdapterTest {
                     "v26.4.1",
                     "/tmp/platform/nodes",
                     "/tmp/platform/cache",
-                    "/tmp/platform/cache/sha");
+                    "/tmp/platform/cache/sha",
+                    "/tmp/platform/templates");
 
     @Mock private PortAllocator portAllocator;
     @Mock private EthDockerRefResolver refResolver;
     @Mock private EthdShellRunner shell;
     @Mock private ContainerInspector inspector;
     @Mock private CheckpointSyncSourceLocator checkpointLocator;
+    @Mock private ElDatadirTemplateLocator templateLocator;
     @Mock private DockerNetworkManager networkManager;
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -61,6 +64,7 @@ class EthDockerOrchestrationAdapterTest {
                         shell,
                         inspector,
                         checkpointLocator,
+                        templateLocator,
                         networkManager,
                         mapper);
         spec =
@@ -137,6 +141,76 @@ class EthDockerOrchestrationAdapterTest {
         assertThat(envCaptor.getValue())
                 .contains("EL_DATA_HOST_PATH=/tmp/platform/nodes/")
                 .contains("/data\n");
+    }
+
+    @Test
+    void deploy_should_extractTemplate_before_ensureDataDir_when_locatorReturnsTarball()
+            throws Exception {
+        EthDockerRef ref = new EthDockerRef("v26.4.1", "abc123");
+        AllocatedPorts ports = new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106);
+        Path tarball = Path.of("/tmp/platform/templates/hoodi-besu.tar.zst");
+        when(refResolver.resolve(anyString(), anyString())).thenReturn(ref);
+        when(portAllocator.allocate()).thenReturn(ports);
+        when(shell.readDefaultEnv(any())).thenReturn(Map.of("ENV_VERSION", "55"));
+        when(checkpointLocator.findFor(spec.network())).thenReturn(Optional.empty());
+        when(templateLocator.findTemplate(spec.network(), spec.clientPair().executionLayer()))
+                .thenReturn(Optional.of(tarball));
+
+        adapter.deploy(spec);
+
+        Path expectedDataDir =
+                Path.of("/tmp/platform/nodes", spec.nodeId().value().toString(), "data");
+        // Extraction MUST run before chown so the recursive chown covers the restored files.
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(shell);
+        inOrder.verify(shell).extractTarballZstd(tarball, expectedDataDir);
+        inOrder.verify(shell).ensureDataDir(expectedDataDir, 10000);
+    }
+
+    @Test
+    void deploy_should_skipExtraction_and_callEnsureDataDir_when_templateMissing()
+            throws Exception {
+        EthDockerRef ref = new EthDockerRef("v26.4.1", "abc123");
+        AllocatedPorts ports = new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106);
+        when(refResolver.resolve(anyString(), anyString())).thenReturn(ref);
+        when(portAllocator.allocate()).thenReturn(ports);
+        when(shell.readDefaultEnv(any())).thenReturn(Map.of("ENV_VERSION", "55"));
+        when(checkpointLocator.findFor(spec.network())).thenReturn(Optional.empty());
+        when(templateLocator.findTemplate(spec.network(), spec.clientPair().executionLayer()))
+                .thenReturn(Optional.empty());
+
+        adapter.deploy(spec);
+
+        verify(shell, org.mockito.Mockito.never()).extractTarballZstd(any(), any());
+        Path expectedDataDir =
+                Path.of("/tmp/platform/nodes", spec.nodeId().value().toString(), "data");
+        verify(shell).ensureDataDir(expectedDataDir, 10000);
+    }
+
+    @Test
+    void deploy_should_notCallTemplateLocator_when_nethermindOrErigon() throws Exception {
+        EthDockerRef ref = new EthDockerRef("v26.4.1", "abc123");
+        AllocatedPorts ports = new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106);
+        NodeSpec erigonSpec =
+                new NodeSpec(
+                        new NodeId(UUID.randomUUID()),
+                        new OwnerId(UUID.randomUUID()),
+                        Network.HOODI,
+                        new com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClientPair(
+                                com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ElClient
+                                        .ERIGON,
+                                com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClClient
+                                        .TEKU),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults());
+        when(refResolver.resolve(anyString(), anyString())).thenReturn(ref);
+        when(portAllocator.allocate()).thenReturn(ports);
+        when(shell.readDefaultEnv(any())).thenReturn(Map.of("ENV_VERSION", "55"));
+        when(checkpointLocator.findFor(erigonSpec.network())).thenReturn(Optional.empty());
+
+        adapter.deploy(erigonSpec);
+
+        verify(templateLocator, org.mockito.Mockito.never()).findTemplate(any(), any());
+        verify(shell, org.mockito.Mockito.never()).extractTarballZstd(any(), any());
     }
 
     @Test

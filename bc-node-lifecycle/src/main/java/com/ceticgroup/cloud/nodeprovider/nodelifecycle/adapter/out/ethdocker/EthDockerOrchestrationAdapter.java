@@ -5,6 +5,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.JsonRpcEndpoint;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeSpec;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.RuntimeStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.CheckpointSyncSourceLocator;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ElDatadirTemplateLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeOrchestrationPort;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +24,7 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
     private final EthdShellRunner shell;
     private final ContainerInspector containerInspector;
     private final CheckpointSyncSourceLocator checkpointLocator;
+    private final ElDatadirTemplateLocator templateLocator;
     private final DockerNetworkManager networkManager;
     private final ObjectMapper mapper;
 
@@ -33,6 +35,7 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
             EthdShellRunner shell,
             ContainerInspector containerInspector,
             CheckpointSyncSourceLocator checkpointLocator,
+            ElDatadirTemplateLocator templateLocator,
             DockerNetworkManager networkManager,
             ObjectMapper mapper) {
         this.properties = properties;
@@ -41,6 +44,7 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
         this.shell = shell;
         this.containerInspector = containerInspector;
         this.checkpointLocator = checkpointLocator;
+        this.templateLocator = templateLocator;
         this.networkManager = networkManager;
         this.mapper = mapper;
     }
@@ -89,6 +93,17 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
                     EthDockerEnvFile.sharedNetworkOverrideYaml());
 
             if (elBindYaml.isPresent()) {
+                // Restore from the (network, el-client) template tarball if one is available.
+                // Without a template the node falls back to a from-scratch sync — the EL container
+                // boots against an empty datadir as before.
+                Optional<Path> template =
+                        templateLocator.findTemplate(
+                                spec.network(), spec.clientPair().executionLayer());
+                if (template.isPresent()) {
+                    shell.extractTarballZstd(template.get(), elDataHostPath);
+                }
+                // Single chown -R after the optional extraction so the EL container UID can write
+                // to the bind mount whether or not a template was applied.
                 shell.ensureDataDir(elDataHostPath, ETH_DOCKER_UID);
                 shell.writeFile(
                         workdir, EthDockerEnvFile.EL_DATADIR_BIND_OVERRIDE_FILE, elBindYaml.get());

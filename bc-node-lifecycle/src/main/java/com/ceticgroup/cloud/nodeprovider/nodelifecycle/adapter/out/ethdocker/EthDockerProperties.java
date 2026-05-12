@@ -4,7 +4,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("app.platform.eth-docker")
 public record EthDockerProperties(
-        String repoUrl, String ref, String rootDir, String cacheDir, String shaCacheFile) {
+        String repoUrl,
+        String ref,
+        String rootDir,
+        String cacheDir,
+        String shaCacheFile,
+        String templatesDir) {
 
     public EthDockerProperties {
         if (repoUrl == null || repoUrl.isBlank()) {
@@ -21,6 +26,9 @@ public record EthDockerProperties(
         }
         if (shaCacheFile == null || shaCacheFile.isBlank()) {
             shaCacheFile = "/var/lib/platform/cache/eth-docker-sha";
+        }
+        if (templatesDir == null || templatesDir.isBlank()) {
+            templatesDir = "/var/lib/platform/templates";
         }
     }
 }

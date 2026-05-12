@@ -34,4 +34,10 @@ public interface EthdShellRunner {
 
     /** Removes the host-side EL datadir recursively. Idempotent. */
     void removeDataDir(Path dataDir) throws IOException;
+
+    /**
+     * Extracts a zstd-compressed tar archive into {@code targetDir}. Creates {@code targetDir} if
+     * missing. Existing files in the target may be overwritten by the extraction.
+     */
+    void extractTarballZstd(Path tarball, Path targetDir) throws IOException;
 }

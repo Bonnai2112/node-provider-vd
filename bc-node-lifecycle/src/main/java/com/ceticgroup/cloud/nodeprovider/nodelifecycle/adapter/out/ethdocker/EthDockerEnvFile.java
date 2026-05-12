@@ -7,6 +7,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeSpec;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -18,6 +19,7 @@ public final class EthDockerEnvFile {
     public static final String MEV_BOOST_COMPOSE_FILE = "mev-boost.yml";
     public static final String SHARED_NETWORK_OVERRIDE_FILE = "shared-network.yml";
     public static final String SHARED_NETWORK_NAME = "node-provider-shared";
+    public static final String EL_DATADIR_BIND_OVERRIDE_FILE = "el-datadir-bind.yml";
 
     // eth-docker yml files don't publish RPC/WS/REST to the host by default (the project
     // expects traefik in front). For our single-host demo we ship a minimal compose override
@@ -66,12 +68,42 @@ public final class EthDockerEnvFile {
         return SHARED_NETWORK_OVERRIDE_YAML;
     }
 
+    // Overrides the top-level named volume (e.g. `besu-el-data`, `geth-el-data`) so docker mounts
+    // it from a host bind path instead of allocating a docker-managed volume. The host path is
+    // injected via the EL_DATA_HOST_PATH env var set in .env, so the same YAML works for any
+    // nodeId. Returns Optional.empty() for EL clients out of PR1 scope (nethermind/erigon), which
+    // fall back to eth-docker's default named volumes.
+    public static Optional<String> elDatadirBindOverrideYaml(ElClient el) {
+        return elDataVolumeName(el)
+                .map(
+                        name ->
+                                """
+                                volumes:
+                                  %s:
+                                    driver: local
+                                    driver_opts:
+                                      type: none
+                                      o: bind
+                                      device: ${EL_DATA_HOST_PATH}
+                                """
+                                        .formatted(name));
+    }
+
+    private static Optional<String> elDataVolumeName(ElClient el) {
+        return switch (el) {
+            case BESU -> Optional.of("besu-el-data");
+            case GETH -> Optional.of("geth-el-data");
+            case NETHERMIND, ERIGON -> Optional.empty();
+        };
+    }
+
     public static Map<String, String> render(
             NodeSpec spec,
             AllocatedPorts ports,
             String composeProjectName,
             Map<String, String> defaults) {
-        return render(spec, ports, composeProjectName, defaults, Optional.empty());
+        return render(
+                spec, ports, composeProjectName, defaults, Optional.empty(), Optional.empty());
     }
 
     public static Map<String, String> render(
@@ -80,6 +112,29 @@ public final class EthDockerEnvFile {
             String composeProjectName,
             Map<String, String> defaults,
             Optional<URI> checkpointSyncOverride) {
+        return render(
+                spec,
+                ports,
+                composeProjectName,
+                defaults,
+                checkpointSyncOverride,
+                Optional.empty());
+    }
+
+    public static Map<String, String> render(
+            NodeSpec spec,
+            AllocatedPorts ports,
+            String composeProjectName,
+            Map<String, String> defaults,
+            Optional<URI> checkpointSyncOverride,
+            Optional<Path> elDataHostPath) {
+        // The EL datadir bind-mount override is added only when (a) the caller passes a host data
+        // path AND (b) the EL client is one we ship a bind override for. nethermind/erigon stay on
+        // their default named volume.
+        boolean elDatadirBindActive =
+                elDataHostPath.isPresent()
+                        && elDataVolumeName(spec.clientPair().executionLayer()).isPresent();
+
         // Start from default.env so values like LOG_LEVEL, EL_NODE, ... flow through; eth-docker
         // compose files reference many of these and lighthouse/geth crash if some are blank.
         Map<String, String> env = new LinkedHashMap<>(defaults);
@@ -89,7 +144,8 @@ public final class EthDockerEnvFile {
                 composeFile(
                         spec.clientPair().executionLayer(),
                         spec.clientPair().consensusLayer(),
-                        spec.options()));
+                        spec.options(),
+                        elDatadirBindActive));
         env.put("COMPOSE_PROJECT_NAME", composeProjectName);
         env.put("NODE_SHORT_ID", shortId(spec.nodeId()));
         env.put("EL_HOST", "0.0.0.0");
@@ -128,6 +184,9 @@ public final class EthDockerEnvFile {
         // off the LAN. If absent, eth-docker's default.env wins (e.g.
         // https://hoodi.checkpoint.sigp.io).
         checkpointSyncOverride.ifPresent(uri -> env.put("CHECKPOINT_SYNC_URL", uri.toString()));
+        if (elDatadirBindActive) {
+            env.put("EL_DATA_HOST_PATH", elDataHostPath.get().toString());
+        }
         return Map.copyOf(env);
     }
 
@@ -145,7 +204,8 @@ public final class EthDockerEnvFile {
         return network.name().toLowerCase(Locale.ROOT);
     }
 
-    private static String composeFile(ElClient el, ClClient cl, NodeOptions options) {
+    private static String composeFile(
+            ElClient el, ClClient cl, NodeOptions options, boolean elDatadirBindActive) {
         StringBuilder sb = new StringBuilder();
         sb.append(elComposeFile(el)).append(':').append(clComposeFile(cl, options.validator()));
         if (options.mevBoost()) {
@@ -153,6 +213,9 @@ public final class EthDockerEnvFile {
         }
         sb.append(':').append(HOST_PORTS_OVERRIDE_FILE);
         sb.append(':').append(SHARED_NETWORK_OVERRIDE_FILE);
+        if (elDatadirBindActive) {
+            sb.append(':').append(EL_DATADIR_BIND_OVERRIDE_FILE);
+        }
         return sb.toString();
     }
 

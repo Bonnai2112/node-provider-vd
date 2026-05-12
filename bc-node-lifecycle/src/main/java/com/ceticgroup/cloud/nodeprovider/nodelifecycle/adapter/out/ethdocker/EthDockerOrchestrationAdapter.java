@@ -45,6 +45,10 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
         this.mapper = mapper;
     }
 
+    // Standard eth-docker container UID (services run as the `ethdocker` user). We chown the
+    // host-side bind-mounted datadir to this UID so the EL process can write to it.
+    private static final int ETH_DOCKER_UID = 10000;
+
     @Override
     public DeploymentRef deploy(NodeSpec spec) {
         try {
@@ -53,14 +57,27 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
             String projectName = "node-" + spec.nodeId().value().toString().substring(0, 8);
             Path workdir =
                     Paths.get(properties.rootDir(), spec.nodeId().value().toString(), "eth-docker");
+            Path elDataHostPath =
+                    Paths.get(properties.rootDir(), spec.nodeId().value().toString(), "data");
 
             shell.ensureCache(Paths.get(properties.cacheDir()), properties.repoUrl());
             shell.cloneIntoWorkdir(Paths.get(properties.cacheDir()), ref.tag(), workdir);
 
+            Optional<String> elBindYaml =
+                    EthDockerEnvFile.elDatadirBindOverrideYaml(spec.clientPair().executionLayer());
+            Optional<Path> elDataHostPathForRender =
+                    elBindYaml.isPresent() ? Optional.of(elDataHostPath) : Optional.empty();
+
             Map<String, String> defaults = shell.readDefaultEnv(workdir);
             Optional<URI> checkpointOverride = checkpointLocator.findFor(spec.network());
             Map<String, String> env =
-                    EthDockerEnvFile.render(spec, ports, projectName, defaults, checkpointOverride);
+                    EthDockerEnvFile.render(
+                            spec,
+                            ports,
+                            projectName,
+                            defaults,
+                            checkpointOverride,
+                            elDataHostPathForRender);
             shell.writeEnv(workdir, EthDockerEnvFile.serialize(env));
             shell.writeFile(
                     workdir,
@@ -71,12 +88,23 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
                     EthDockerEnvFile.SHARED_NETWORK_OVERRIDE_FILE,
                     EthDockerEnvFile.sharedNetworkOverrideYaml());
 
+            if (elBindYaml.isPresent()) {
+                shell.ensureDataDir(elDataHostPath, ETH_DOCKER_UID);
+                shell.writeFile(
+                        workdir, EthDockerEnvFile.EL_DATADIR_BIND_OVERRIDE_FILE, elBindYaml.get());
+            }
+
             networkManager.ensureSharedNetworkExists(EthDockerEnvFile.SHARED_NETWORK_NAME);
 
             shell.runEthdUp(workdir);
 
             DeploymentPayload payload =
-                    new DeploymentPayload(workdir.toString(), projectName, ports, ref);
+                    new DeploymentPayload(
+                            workdir.toString(),
+                            projectName,
+                            ports,
+                            ref,
+                            elBindYaml.isPresent() ? elDataHostPath.toString() : null);
             return new DeploymentRef(serialize(payload));
         } catch (IOException e) {
             throw new IllegalStateException("eth-docker deploy failed", e);
@@ -91,6 +119,9 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
             shell.runEthdDown(workdir);
             shell.runEthdTerminate(workdir);
             shell.removeWorkdir(workdir);
+            if (payload.elDataHostPath() != null) {
+                shell.removeDataDir(Paths.get(payload.elDataHostPath()));
+            }
         } catch (IOException e) {
             throw new IllegalStateException("eth-docker tearDown failed", e);
         }

@@ -149,10 +149,33 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
 
     @Override
     public void removeWorkdir(Path workdir) throws IOException {
-        if (!Files.exists(workdir)) {
+        deleteRecursively(workdir);
+    }
+
+    @Override
+    public void ensureDataDir(Path dataDir, int ownerUid) throws IOException {
+        Files.createDirectories(dataDir);
+        // eth-docker images run the EL process as UID 10000; without chown the container can't
+        // write to the bind-mounted host directory. Requires CAP_CHOWN (typically root).
+        run(
+                dataDir.getParent() == null ? dataDir : dataDir.getParent(),
+                null,
+                "chown",
+                "-R",
+                ownerUid + ":" + ownerUid,
+                dataDir.toString());
+    }
+
+    @Override
+    public void removeDataDir(Path dataDir) throws IOException {
+        deleteRecursively(dataDir);
+    }
+
+    private static void deleteRecursively(Path root) throws IOException {
+        if (!Files.exists(root)) {
             return;
         }
-        try (Stream<Path> walk = Files.walk(workdir)) {
+        try (Stream<Path> walk = Files.walk(root)) {
             walk.sorted(Comparator.reverseOrder())
                     .forEach(
                             p -> {

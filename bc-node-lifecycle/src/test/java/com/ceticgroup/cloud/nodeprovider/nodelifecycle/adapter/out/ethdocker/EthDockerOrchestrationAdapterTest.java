@@ -101,6 +101,77 @@ class EthDockerOrchestrationAdapterTest {
     }
 
     @Test
+    void deploy_should_writeElDatadirBindOverride_and_ensureDataDir_when_besu() throws Exception {
+        EthDockerRef ref = new EthDockerRef("v26.4.1", "abc123");
+        AllocatedPorts ports = new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106);
+        when(refResolver.resolve(anyString(), anyString())).thenReturn(ref);
+        when(portAllocator.allocate()).thenReturn(ports);
+        when(shell.readDefaultEnv(any())).thenReturn(Map.of("ENV_VERSION", "55"));
+        when(checkpointLocator.findFor(spec.network())).thenReturn(Optional.empty());
+
+        DeploymentRef result = adapter.deploy(spec);
+
+        Path expectedDataDir =
+                Path.of("/tmp/platform/nodes", spec.nodeId().value().toString(), "data");
+        verify(shell).ensureDataDir(expectedDataDir, 10000);
+        verify(shell).writeFile(any(), eq("el-datadir-bind.yml"), anyString());
+
+        DeploymentPayload payload = mapper.readValue(result.payload(), DeploymentPayload.class);
+        assertThat(payload.elDataHostPath()).isEqualTo(expectedDataDir.toString());
+    }
+
+    @Test
+    void deploy_should_includeElDataHostPath_in_envFile_when_besu() throws Exception {
+        EthDockerRef ref = new EthDockerRef("v26.4.1", "abc123");
+        AllocatedPorts ports = new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106);
+        when(refResolver.resolve(anyString(), anyString())).thenReturn(ref);
+        when(portAllocator.allocate()).thenReturn(ports);
+        when(shell.readDefaultEnv(any())).thenReturn(Map.of("ENV_VERSION", "55"));
+        when(checkpointLocator.findFor(spec.network())).thenReturn(Optional.empty());
+
+        adapter.deploy(spec);
+
+        org.mockito.ArgumentCaptor<String> envCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(shell).writeEnv(any(), envCaptor.capture());
+        assertThat(envCaptor.getValue())
+                .contains("EL_DATA_HOST_PATH=/tmp/platform/nodes/")
+                .contains("/data\n");
+    }
+
+    @Test
+    void deploy_should_skipElDatadirBindOverride_when_nethermind() throws Exception {
+        EthDockerRef ref = new EthDockerRef("v26.4.1", "abc123");
+        AllocatedPorts ports = new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106);
+        NodeSpec nethermindSpec =
+                new NodeSpec(
+                        new NodeId(UUID.randomUUID()),
+                        new OwnerId(UUID.randomUUID()),
+                        Network.HOODI,
+                        new com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClientPair(
+                                com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ElClient
+                                        .NETHERMIND,
+                                com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClClient
+                                        .TEKU),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults());
+        when(refResolver.resolve(anyString(), anyString())).thenReturn(ref);
+        when(portAllocator.allocate()).thenReturn(ports);
+        when(shell.readDefaultEnv(any())).thenReturn(Map.of("ENV_VERSION", "55"));
+        when(checkpointLocator.findFor(nethermindSpec.network())).thenReturn(Optional.empty());
+
+        DeploymentRef result = adapter.deploy(nethermindSpec);
+
+        verify(shell, org.mockito.Mockito.never())
+                .ensureDataDir(any(), org.mockito.ArgumentMatchers.anyInt());
+        verify(shell, org.mockito.Mockito.never())
+                .writeFile(any(), eq("el-datadir-bind.yml"), anyString());
+
+        DeploymentPayload payload = mapper.readValue(result.payload(), DeploymentPayload.class);
+        assertThat(payload.elDataHostPath()).isNull();
+    }
+
+    @Test
     void deploy_should_consumeCheckpointSyncOverride_when_locatorReturnsUrl() throws Exception {
         EthDockerRef ref = new EthDockerRef("v26.4.1", "abc123");
         AllocatedPorts ports = new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106);
@@ -120,13 +191,15 @@ class EthDockerOrchestrationAdapterTest {
     }
 
     @Test
-    void tearDown_should_runDownAndTerminate_when_payloadValid() throws Exception {
+    void tearDown_should_runDownAndTerminate_and_removeDataDir_when_elDataHostPathPresent()
+            throws Exception {
         DeploymentPayload payload =
                 new DeploymentPayload(
                         "/tmp/platform/nodes/x/eth-docker",
                         "node-deadbeef",
                         new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106),
-                        new EthDockerRef("v26.4.1", "abc123"));
+                        new EthDockerRef("v26.4.1", "abc123"),
+                        "/tmp/platform/nodes/x/data");
         DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
 
         adapter.tearDown(ref);
@@ -134,6 +207,24 @@ class EthDockerOrchestrationAdapterTest {
         verify(shell).runEthdDown(Path.of("/tmp/platform/nodes/x/eth-docker"));
         verify(shell).runEthdTerminate(Path.of("/tmp/platform/nodes/x/eth-docker"));
         verify(shell).removeWorkdir(Path.of("/tmp/platform/nodes/x/eth-docker"));
+        verify(shell).removeDataDir(Path.of("/tmp/platform/nodes/x/data"));
+    }
+
+    @Test
+    void tearDown_should_notCallRemoveDataDir_when_elDataHostPathNull() throws Exception {
+        // Pre-PR1 payload or nethermind/erigon: no bind-mount, no data dir to remove.
+        DeploymentPayload payload =
+                new DeploymentPayload(
+                        "/tmp/platform/nodes/x/eth-docker",
+                        "node-deadbeef",
+                        new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106),
+                        new EthDockerRef("v26.4.1", "abc123"),
+                        null);
+        DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
+
+        adapter.tearDown(ref);
+
+        verify(shell, org.mockito.Mockito.never()).removeDataDir(any());
     }
 
     @Test
@@ -143,7 +234,8 @@ class EthDockerOrchestrationAdapterTest {
                         "/tmp/x",
                         "node-12345678",
                         new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106),
-                        new EthDockerRef("v26.4.1", "abc"));
+                        new EthDockerRef("v26.4.1", "abc"),
+                        null);
         DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
         RuntimeStatus.Healthy expected =
                 RuntimeStatus.Healthy.of(new LayerState.Running(), new LayerState.Running());
@@ -161,7 +253,8 @@ class EthDockerOrchestrationAdapterTest {
                         "/tmp/x",
                         "node-12345678",
                         new AllocatedPorts(30123, 30101, 30102, 30103, 30104, 30105, 30106),
-                        new EthDockerRef("v26.4.1", "abc"));
+                        new EthDockerRef("v26.4.1", "abc"),
+                        null);
         DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
 
         Optional<JsonRpcEndpoint> endpoint = adapter.endpointFor(ref);

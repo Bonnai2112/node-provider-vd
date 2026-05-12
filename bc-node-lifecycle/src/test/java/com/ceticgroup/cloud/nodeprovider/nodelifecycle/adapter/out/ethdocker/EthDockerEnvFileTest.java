@@ -11,6 +11,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeSpec;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -415,5 +416,101 @@ class EthDockerEnvFileTest {
         String text = EthDockerEnvFile.serialize(env);
 
         assertThat(text).contains("ENV_VERSION=55");
+    }
+
+    @Test
+    void elDatadirBindOverrideYaml_should_overrideBesuVolume_when_besu() {
+        Optional<String> yaml = EthDockerEnvFile.elDatadirBindOverrideYaml(ElClient.BESU);
+
+        assertThat(yaml).isPresent();
+        assertThat(yaml.get())
+                .contains("volumes:")
+                .contains("besu-el-data:")
+                .contains("driver: local")
+                .contains("type: none")
+                .contains("o: bind")
+                .contains("device: ${EL_DATA_HOST_PATH}");
+    }
+
+    @Test
+    void elDatadirBindOverrideYaml_should_overrideGethVolume_when_geth() {
+        Optional<String> yaml = EthDockerEnvFile.elDatadirBindOverrideYaml(ElClient.GETH);
+
+        assertThat(yaml).isPresent();
+        assertThat(yaml.get()).contains("geth-el-data:").contains("device: ${EL_DATA_HOST_PATH}");
+    }
+
+    @Test
+    void elDatadirBindOverrideYaml_should_returnEmpty_when_nethermindOrErigon() {
+        // Out of PR1 scope; these clients keep eth-docker's named volumes.
+        assertThat(EthDockerEnvFile.elDatadirBindOverrideYaml(ElClient.NETHERMIND)).isEmpty();
+        assertThat(EthDockerEnvFile.elDatadirBindOverrideYaml(ElClient.ERIGON)).isEmpty();
+    }
+
+    @Test
+    void render_should_appendElDatadirBindOverride_to_composeFile_when_besuAndDataPathProvided() {
+        Map<String, String> env =
+                EthDockerEnvFile.render(
+                        spec(Network.HOODI, ElClient.BESU, ClClient.TEKU),
+                        PORTS,
+                        PROJECT_NAME,
+                        DEFAULTS,
+                        Optional.empty(),
+                        Optional.of(Path.of("/var/lib/platform/nodes/abc/data")));
+
+        assertThat(env.get("COMPOSE_FILE")).endsWith(":el-datadir-bind.yml");
+    }
+
+    @Test
+    void render_should_setElDataHostPath_when_besuAndDataPathProvided() {
+        Map<String, String> env =
+                EthDockerEnvFile.render(
+                        spec(Network.HOODI, ElClient.GETH, ClClient.LIGHTHOUSE),
+                        PORTS,
+                        PROJECT_NAME,
+                        DEFAULTS,
+                        Optional.empty(),
+                        Optional.of(Path.of("/var/lib/platform/nodes/abc/data")));
+
+        assertThat(env).containsEntry("EL_DATA_HOST_PATH", "/var/lib/platform/nodes/abc/data");
+    }
+
+    @Test
+    void render_should_notAppendElDatadirBindOverride_when_elDataPathAbsent() {
+        Map<String, String> env =
+                EthDockerEnvFile.render(
+                        spec(Network.HOODI, ElClient.BESU, ClClient.TEKU),
+                        PORTS,
+                        PROJECT_NAME,
+                        DEFAULTS,
+                        Optional.empty(),
+                        Optional.empty());
+
+        assertThat(env.get("COMPOSE_FILE")).doesNotContain("el-datadir-bind.yml");
+        assertThat(env).doesNotContainKey("EL_DATA_HOST_PATH");
+    }
+
+    @Test
+    void render_should_notAppendElDatadirBindOverride_when_nethermindOrErigon() {
+        // Even if a host path is provided, an unsupported EL client must not get the override.
+        for (ElClient unsupported : new ElClient[] {ElClient.NETHERMIND, ElClient.ERIGON}) {
+            Map<String, String> env =
+                    EthDockerEnvFile.render(
+                            spec(Network.HOODI, unsupported, ClClient.TEKU),
+                            PORTS,
+                            PROJECT_NAME,
+                            DEFAULTS,
+                            Optional.empty(),
+                            Optional.of(Path.of("/var/lib/platform/nodes/abc/data")));
+
+            assertThat(env.get("COMPOSE_FILE"))
+                    .as("COMPOSE_FILE for %s must not include el-datadir-bind.yml", unsupported)
+                    .doesNotContain("el-datadir-bind.yml");
+            assertThat(env)
+                    .as(
+                            "EL_DATA_HOST_PATH must not be set for unsupported EL client %s",
+                            unsupported)
+                    .doesNotContainKey("EL_DATA_HOST_PATH");
+        }
     }
 }

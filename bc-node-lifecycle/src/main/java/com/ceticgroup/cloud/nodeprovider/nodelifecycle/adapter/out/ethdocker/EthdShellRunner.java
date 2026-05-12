@@ -25,4 +25,13 @@ public interface EthdShellRunner {
     void runEthdKeysImport(Path workdir, String keystorePassword) throws IOException;
 
     void removeWorkdir(Path workdir) throws IOException;
+
+    /**
+     * Creates the host-side EL datadir and chowns it to the eth-docker container UID so the EL
+     * process can write to the bind mount. Idempotent.
+     */
+    void ensureDataDir(Path dataDir, int ownerUid) throws IOException;
+
+    /** Removes the host-side EL datadir recursively. Idempotent. */
+    void removeDataDir(Path dataDir) throws IOException;
 }

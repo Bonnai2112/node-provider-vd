@@ -15,6 +15,23 @@ processus shell sur la machine où tourne le backend. Pré-requis :
 | Docker engine | accessible par l'utilisateur du backend (socket ou `DOCKER_HOST`) |
 | Docker Compose v2 | invoqué par `./ethd` |
 | Connexion réseau | requise au moins une fois pour résoudre le tag eth-docker (fallback cache disque sinon) |
+| `sudo` + règle dédiée | requis pour `chown` du datadir EL vers l'UID du conteneur (cf. § ci-dessous) |
+
+### Règle sudoers pour le `chown` du datadir
+
+Le process EL tourne dans le conteneur eth-docker sous un UID non-root (`10000`
+pour Geth/Erigon, `10002` pour Nethermind, `12000`, …). Sans alignement de
+propriétaire côté hôte, il ne peut pas écrire dans le bind-mount du datadir.
+`ProcessEthdShellRunner.ensureDataDir` délègue donc le `chown` via `sudo -n`.
+
+Pré-requis ops (à provisionner avant de démarrer le backend) — `/etc/sudoers.d/node-provider` :
+
+```
+<backend-user> ALL=(root) NOPASSWD: /usr/bin/chown -R *\:* /var/lib/platform/nodes/*/data
+```
+
+Le périmètre est strictement limité à `/var/lib/platform/nodes/*/data` — aucun
+autre `chown` ne peut être lancé via cette règle.
 
 ## Configuration applicative
 

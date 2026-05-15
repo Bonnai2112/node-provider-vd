@@ -1,0 +1,533 @@
+#cloud-config
+# ============================================================
+# Cloud-init Ubuntu on-prem
+# - User: ccp
+# - Auto-détection du disque data (2e disque non-OS, > 10G)
+# - Mount → /mnt/web3-node-provider-prod
+# - Git, Docker, Docker Compose, SDKMAN + Java 25, NVM + Node 22
+# - Tout l'environnement de travail relocalisé sur le disque data
+# ============================================================
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - git
+  - curl
+  - zip
+  - unzip
+  - bash
+  - jq
+  - htop
+  - rsync
+  - build-essential
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - apt-transport-https
+  - software-properties-common
+
+users:
+  - name: ccp
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    groups: [sudo, docker, sdkman, nvm]
+    lock_passwd: true
+    # ⚠️ Ajoute ta clé SSH publique :
+    # ssh_authorized_keys:
+    #   - ssh-ed25519 AAAA... ton-commentaire
+
+groups:
+  - sdkman
+  - nvm
+
+# ============================================================
+# bootcmd : auto-détection + mount du disque data
+# Exécuté à CHAQUE boot, avant runcmd
+# ============================================================
+bootcmd:
+  - |
+    set -e
+    LOG=/var/log/bootcmd-mount.log
+    exec > >(tee -a "$LOG") 2>&1
+    echo "=== $(date) — bootcmd mount disque data ==="
+
+    MOUNT_POINT="/mnt/web3-node-provider-prod"
+    FS_TYPE="ext4"
+    FS_LABEL="web3data"
+    MIN_SIZE_BYTES=10737418240   # 10 GiB
+
+    # Si déjà monté (via /etc/fstab), rien à faire
+    if mountpoint -q "$MOUNT_POINT"; then
+      echo "✓ $MOUNT_POINT déjà monté."
+      df -h "$MOUNT_POINT"
+      exit 0
+    fi
+
+    # 1. Cherche un disque labellisé "web3data" (cas reboot/réinstall)
+    DEVICE=$(blkid -L "$FS_LABEL" 2>/dev/null || true)
+
+    # 2. Sinon, auto-détection : 1er disque non-OS > 10G
+    if [ -z "$DEVICE" ]; then
+      for name in $(lsblk -ndo NAME,TYPE | awk '$2=="disk" {print $1}'); do
+        candidate="/dev/$name"
+        if lsblk -no MOUNTPOINTS "$candidate" 2>/dev/null \
+            | grep -qE "^(/|/boot)(/|$)"; then
+          continue
+        fi
+        size_bytes=$(lsblk -bndo SIZE "$candidate" 2>/dev/null || echo 0)
+        [ "$size_bytes" -lt "$MIN_SIZE_BYTES" ] && continue
+        DEVICE="$candidate"
+        break
+      done
+    fi
+
+    if [ -z "$DEVICE" ] || [ ! -b "$DEVICE" ]; then
+      echo "⚠️  Aucun disque data détecté, skip mount."
+      exit 0
+    fi
+    echo "→ Disque data: $DEVICE ($(lsblk -bndo SIZE "$DEVICE" | numfmt --to=iec))"
+
+    if ! blkid "$DEVICE" >/dev/null 2>&1; then
+      echo "→ Formatage de $DEVICE en $FS_TYPE (label=$FS_LABEL)..."
+      mkfs.ext4 -F -L "$FS_LABEL" "$DEVICE"
+    else
+      echo "→ Déjà formaté: $(blkid "$DEVICE")"
+    fi
+
+    mkdir -p "$MOUNT_POINT"
+
+    UUID=$(blkid -s UUID -o value "$DEVICE")
+    if ! grep -q "$UUID" /etc/fstab; then
+      echo "→ Ajout fstab: UUID=$UUID → $MOUNT_POINT"
+      echo "UUID=$UUID $MOUNT_POINT $FS_TYPE defaults,nofail 0 2" >> /etc/fstab
+    fi
+
+    mount "$MOUNT_POINT"
+    df -h "$MOUNT_POINT"
+    echo "✓ $DEVICE monté sur $MOUNT_POINT"
+
+write_files:
+  # ============================================================
+  # Script principal — setup Docker, SDKMAN, Java, NVM, Node
+  # ============================================================
+  - path: /usr/local/sbin/setup-data-disk.sh
+    permissions: '0755'
+    owner: root:root
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # === Configuration ===
+      DATA_MOUNT="/mnt/web3-node-provider-prod"
+      TARGET_USER="ccp"
+      JAVA_VERSION="25.0.3-amzn"
+      NODE_VERSION="22"
+      NVM_FALLBACK_VERSION="v0.40.4"
+      MAX_WAIT=30
+
+      LOG="/var/log/setup-data-disk.log"
+      exec > >(tee -a "$LOG") 2>&1
+      echo "=========================================="
+      echo "=== $(date) — Setup pour $TARGET_USER ==="
+      echo "=========================================="
+
+      # ========================================================
+      # FONCTIONS HELPERS
+      # ========================================================
+
+      # Installe un outil utilisateur (clone/curl style) dans un dossier dédié.
+      # Gère le comportement opposé de SDKMAN (refuse si dossier existe)
+      # vs NVM (exige que le dossier existe).
+      #
+      # Usage:
+      #   install_user_tool <nom> <target_dir> <group> <init_check_file> \
+      #     <pre_install_mode> <install_command>
+      #
+      # pre_install_mode :
+      #   "create_dir"   → mkdir le dossier cible (pour NVM)
+      #   "create_parent" → mkdir seulement le parent (pour SDKMAN)
+      install_user_tool() {
+        local name="$1"
+        local target_dir="$2"
+        local tool_group="$3"
+        local init_file="$4"
+        local pre_install_mode="$5"
+        local install_cmd="$6"
+
+        if [[ -s "$target_dir/$init_file" ]]; then
+          echo "  $name déjà présent, skip install."
+          return 0
+        fi
+
+        echo "  Préparation install $name (mode=$pre_install_mode)..."
+        rm -rf "$target_dir"
+
+        case "$pre_install_mode" in
+          create_dir)
+            mkdir -p "$target_dir"
+            chown "$TARGET_USER:$TARGET_USER" "$target_dir"
+            ;;
+          create_parent)
+            local parent_dir
+            parent_dir="$(dirname "$target_dir")"
+            mkdir -p "$parent_dir"
+            chown "$TARGET_USER:$TARGET_USER" "$parent_dir"
+            ;;
+          *)
+            echo "❌ pre_install_mode invalide: $pre_install_mode"
+            return 1
+            ;;
+        esac
+
+        # Lance l'install en tant que $TARGET_USER
+        sudo -u "$TARGET_USER" bash -c "$install_cmd"
+
+        if [[ ! -s "$target_dir/$init_file" ]]; then
+          echo "❌ Install $name ratée ($init_file introuvable)"
+          ls -la "$target_dir" 2>&1 || true
+          return 1
+        fi
+        echo "  ✓ $name installé"
+      }
+
+      # Applique les permissions groupe partagé (setgid pour héritage)
+      apply_shared_perms() {
+        local target_dir="$1"
+        local group="$2"
+        chgrp -R "$group" "$target_dir"
+        chmod -R g+rwX "$target_dir"
+        find "$target_dir" -type d -exec chmod g+s {} \;
+      }
+
+      # ========================================================
+      # ÉTAPE 1 — Vérification du mount data
+      # ========================================================
+      echo "[1/12] Vérification du mount $DATA_MOUNT..."
+      DATA_MOUNT_OK=false
+      waited=0
+      while ! mountpoint -q "$DATA_MOUNT"; do
+        if [[ $waited -ge $MAX_WAIT ]]; then
+          echo "  ⚠️  Timeout, fallback disque OS."
+          break
+        fi
+        sleep 5
+        waited=$((waited + 5))
+        echo "  ... ${waited}s"
+      done
+      if mountpoint -q "$DATA_MOUNT"; then
+        DATA_MOUNT_OK=true
+        echo "  ✓ $DATA_MOUNT actif ($(df -h "$DATA_MOUNT" | awk 'NR==2 {print $2 " total, " $4 " libre"}'))"
+      fi
+
+      # Test exec sur le mount
+      if [[ "$DATA_MOUNT_OK" == "true" ]]; then
+        TEST="$DATA_MOUNT/.fs-test-$$"
+        echo '#!/bin/bash' > "$TEST" && echo 'exit 0' >> "$TEST"
+        if ! chmod +x "$TEST" || ! "$TEST" &>/dev/null; then
+          echo "  ⚠️  FS incompatible. Fallback."
+          DATA_MOUNT_OK=false
+        fi
+        rm -f "$TEST"
+      fi
+
+      # ========================================================
+      # ÉTAPE 2 — Définition des chemins
+      # ========================================================
+      echo "[2/12] Définition des chemins..."
+      if [[ "$DATA_MOUNT_OK" == "true" ]]; then
+        WORKSPACE="$DATA_MOUNT/workspace"
+        TOOLS_DIR="$DATA_MOUNT/tools"
+        CACHE_DIR="$DATA_MOUNT/cache"
+        DOCKER_ROOT="$DATA_MOUNT/docker"
+        SDKMAN_DIR="$TOOLS_DIR/sdkman"
+        NVM_DIR="$TOOLS_DIR/nvm"
+        echo "  ✓ Mode disque data: $DATA_MOUNT"
+      else
+        DATA_MOUNT="/var/local"
+        WORKSPACE="/home/$TARGET_USER/workspace"
+        TOOLS_DIR="/opt/tools"
+        CACHE_DIR="/var/cache/dev"
+        DOCKER_ROOT="/var/lib/docker"
+        SDKMAN_DIR="/opt/sdkman"
+        NVM_DIR="/opt/nvm"
+        echo "  ⚠️  Mode fallback (disque OS)"
+      fi
+      echo "    WORKSPACE   = $WORKSPACE"
+      echo "    TOOLS_DIR   = $TOOLS_DIR"
+      echo "    CACHE_DIR   = $CACHE_DIR"
+      echo "    DOCKER_ROOT = $DOCKER_ROOT"
+      echo "    SDKMAN_DIR  = $SDKMAN_DIR"
+      echo "    NVM_DIR     = $NVM_DIR"
+
+      # ========================================================
+      # ÉTAPE 3 — User + structure de dossiers
+      # ========================================================
+      echo "[3/12] Création des dossiers..."
+      id "$TARGET_USER" &>/dev/null || { echo "❌ User $TARGET_USER inexistant"; exit 1; }
+
+      mkdir -p "$WORKSPACE" "$TOOLS_DIR" "$DOCKER_ROOT"
+      mkdir -p "$CACHE_DIR"/{maven,gradle,npm,yarn,pip,go,cargo}
+      chown -R "$TARGET_USER:$TARGET_USER" "$WORKSPACE" "$CACHE_DIR"
+      chown "$TARGET_USER:$TARGET_USER" "$TOOLS_DIR"
+
+      ln -sfn "$WORKSPACE" "/home/$TARGET_USER/workspace"
+      chown -h "$TARGET_USER:$TARGET_USER" "/home/$TARGET_USER/workspace"
+
+      # ========================================================
+      # ÉTAPE 4 — Profile global
+      # ========================================================
+      echo "[4/12] Génération de /etc/profile.d/data-disk-paths.sh..."
+      cat > /etc/profile.d/data-disk-paths.sh <<EOF
+      #!/bin/bash
+      # Auto-généré par setup-data-disk.sh — ne pas éditer manuellement
+      export DATA_DISK="$DATA_MOUNT"
+      export WORKSPACE="$WORKSPACE"
+      export TOOLS_DIR="$TOOLS_DIR"
+      export CACHE_DIR="$CACHE_DIR"
+
+      # SDKMAN
+      export SDKMAN_DIR="$SDKMAN_DIR"
+      [[ -s "\$SDKMAN_DIR/bin/sdkman-init.sh" ]] && source "\$SDKMAN_DIR/bin/sdkman-init.sh"
+
+      # NVM (Node Version Manager)
+      export NVM_DIR="$NVM_DIR"
+      [[ -s "\$NVM_DIR/nvm.sh" ]] && source "\$NVM_DIR/nvm.sh"
+      [[ -s "\$NVM_DIR/bash_completion" ]] && source "\$NVM_DIR/bash_completion"
+
+      # Caches outils de dev — tous redirigés vers le disque data
+      export MAVEN_OPTS="-Dmaven.repo.local=\$CACHE_DIR/maven"
+      export GRADLE_USER_HOME="\$CACHE_DIR/gradle"
+      export NPM_CONFIG_CACHE="\$CACHE_DIR/npm"
+      export YARN_CACHE_FOLDER="\$CACHE_DIR/yarn"
+      export PIP_CACHE_DIR="\$CACHE_DIR/pip"
+      export GOPATH="\$CACHE_DIR/go"
+      export GOMODCACHE="\$CACHE_DIR/go/pkg/mod"
+      export CARGO_HOME="\$CACHE_DIR/cargo"
+
+      # cd auto vers workspace au login interactif
+      if [[ -n "\${PS1:-}" ]] && [[ "\$PWD" == "\$HOME" ]] && [[ -d "\$WORKSPACE" ]]; then
+        cd "\$WORKSPACE" 2>/dev/null || true
+      fi
+      EOF
+      chmod 0755 /etc/profile.d/data-disk-paths.sh
+
+      # ========================================================
+      # ÉTAPE 5 — Docker (config + data-root)
+      # ========================================================
+      echo "[5/12] Configuration Docker data-root → $DOCKER_ROOT..."
+      mkdir -p /etc/docker
+      cat > /etc/docker/daemon.json <<EOF
+      {
+        "data-root": "$DOCKER_ROOT",
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "50m",
+          "max-file": "3"
+        },
+        "storage-driver": "overlay2"
+      }
+      EOF
+
+      if systemctl is-active --quiet docker; then
+        CURRENT_ROOT=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || echo "/var/lib/docker")
+        if [[ "$CURRENT_ROOT" != "$DOCKER_ROOT" ]]; then
+          echo "  Migration Docker $CURRENT_ROOT → $DOCKER_ROOT..."
+          systemctl stop docker docker.socket
+          if [[ -d "$CURRENT_ROOT" ]] && [[ -n "$(ls -A "$CURRENT_ROOT" 2>/dev/null)" ]]; then
+            rsync -aHAX "$CURRENT_ROOT/" "$DOCKER_ROOT/"
+            mv "$CURRENT_ROOT" "${CURRENT_ROOT}.old-$(date +%s)"
+          fi
+          systemctl start docker
+        else
+          systemctl restart docker
+        fi
+      else
+        systemctl enable docker
+        systemctl start docker
+      fi
+      sleep 2
+      ACTUAL_ROOT=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || echo "?")
+      echo "  Docker root actuel: $ACTUAL_ROOT"
+
+      # ========================================================
+      # ÉTAPE 6 — Git
+      # ========================================================
+      echo "[6/12] Configuration Git pour $TARGET_USER..."
+      sudo -u "$TARGET_USER" git config --global init.defaultBranch main
+      sudo -u "$TARGET_USER" git config --global pull.rebase false
+      sudo -u "$TARGET_USER" git config --global core.editor "nano"
+      sudo -u "$TARGET_USER" git config --global --add safe.directory "$WORKSPACE/*"
+
+      # ========================================================
+      # ÉTAPE 7 — SDKMAN
+      # ========================================================
+      # SDKMAN refuse de s'installer si $SDKMAN_DIR existe déjà (même vide).
+      # Mode: create_parent → on crée seulement le parent et SDKMAN crée son dossier.
+      echo "[7/12] Installation SDKMAN dans $SDKMAN_DIR..."
+      SDKMAN_INSTALL_CMD="
+        curl -fsSL 'https://get.sdkman.io?rcupdate=false' -o /tmp/sdkman-install.sh
+        [[ -s /tmp/sdkman-install.sh ]] || exit 1
+        env SDKMAN_DIR='$SDKMAN_DIR' bash /tmp/sdkman-install.sh
+        rm -f /tmp/sdkman-install.sh
+      "
+      install_user_tool "SDKMAN" "$SDKMAN_DIR" "sdkman" "bin/sdkman-init.sh" \
+        "create_parent" "$SDKMAN_INSTALL_CMD"
+
+      # Config non-interactive (à appliquer seulement après install fraîche)
+      if [[ -f "$SDKMAN_DIR/etc/config" ]]; then
+        sed -i 's/sdkman_auto_answer=false/sdkman_auto_answer=true/' "$SDKMAN_DIR/etc/config"
+        sed -i 's/sdkman_selfupdate_feature=true/sdkman_selfupdate_feature=false/' "$SDKMAN_DIR/etc/config"
+      fi
+
+      echo "[8/12] Permissions groupe sdkman..."
+      apply_shared_perms "$SDKMAN_DIR" "sdkman"
+
+      # ========================================================
+      # ÉTAPE 9 — Java
+      # ========================================================
+      echo "[9/12] Installation Java $JAVA_VERSION..."
+      if [[ -d "$SDKMAN_DIR/candidates/java/$JAVA_VERSION" ]]; then
+        echo "  Java $JAVA_VERSION déjà installé."
+      else
+        sudo -u "$TARGET_USER" env SDKMAN_DIR="$SDKMAN_DIR" bash -c "
+          set +u
+          source '$SDKMAN_DIR/bin/sdkman-init.sh'
+          export sdkman_auto_answer=true
+          yes | sdk install java '$JAVA_VERSION'
+          yes | sdk default java '$JAVA_VERSION'
+        "
+        echo "  ✓ Java $JAVA_VERSION installé"
+      fi
+
+      # Réapplique les perms après install Java (nouveaux fichiers dans candidates/)
+      apply_shared_perms "$SDKMAN_DIR" "sdkman"
+
+      # ========================================================
+      # ÉTAPE 10 — NVM
+      # ========================================================
+      # NVM EXIGE que $NVM_DIR existe ET appartienne au user qui lance l'install.
+      # Sinon il échoue avec : "NVM_DIR set to ... but that directory does not exist".
+      # Mode: create_dir → on crée le dossier cible avant l'install.
+      echo "[10/12] Installation NVM dans $NVM_DIR..."
+
+      # Récupère la dernière version stable (fallback si l'API GitHub râle)
+      NVM_LATEST=$(curl -fsSL https://api.github.com/repos/nvm-sh/nvm/releases/latest 2>/dev/null \
+        | grep '"tag_name"' | head -1 | cut -d'"' -f4 || true)
+      NVM_LATEST="${NVM_LATEST:-$NVM_FALLBACK_VERSION}"
+      echo "  Version NVM cible: $NVM_LATEST"
+
+      NVM_INSTALL_CMD="
+        env NVM_DIR='$NVM_DIR' PROFILE=/dev/null \
+          bash -c 'curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_LATEST/install.sh | bash'
+      "
+      install_user_tool "NVM" "$NVM_DIR" "nvm" "nvm.sh" \
+        "create_dir" "$NVM_INSTALL_CMD"
+
+      echo "[11/12] Permissions groupe nvm + installation Node $NODE_VERSION..."
+      apply_shared_perms "$NVM_DIR" "nvm"
+
+      # ========================================================
+      # ÉTAPE 11 — Node.js + npm/yarn/pnpm
+      # ========================================================
+      INSTALLED_NODE=$(ls "$NVM_DIR/versions/node/" 2>/dev/null | grep -E "^v$NODE_VERSION\." | head -1 || true)
+      if [[ -n "$INSTALLED_NODE" ]]; then
+        echo "  Node $INSTALLED_NODE déjà installé."
+      else
+        sudo -u "$TARGET_USER" env NVM_DIR="$NVM_DIR" bash -c "
+          set +u
+          source '$NVM_DIR/nvm.sh'
+          nvm install '$NODE_VERSION'
+          nvm alias default '$NODE_VERSION'
+          nvm use default
+          npm install -g npm@latest yarn pnpm
+        "
+        echo "  ✓ Node $NODE_VERSION + npm/yarn/pnpm installés"
+      fi
+
+      # Réapplique les perms après les installs npm globaux
+      apply_shared_perms "$NVM_DIR" "nvm"
+
+      # ========================================================
+      # ÉTAPE 12 — .bashrc
+      # ========================================================
+      echo "[12/12] Configuration .bashrc de $TARGET_USER..."
+      BASHRC="/home/$TARGET_USER/.bashrc"
+      if [[ -f "$BASHRC" ]] && ! grep -q "data-disk-paths" "$BASHRC"; then
+        cat >> "$BASHRC" <<'EOF'
+
+      # Chemins centralisés disque data + SDKMAN + NVM
+      [[ -s /etc/profile.d/data-disk-paths.sh ]] && source /etc/profile.d/data-disk-paths.sh
+      EOF
+        chown "$TARGET_USER:$TARGET_USER" "$BASHRC"
+      fi
+
+      # ========================================================
+      # VÉRIFICATIONS FINALES
+      # ========================================================
+      echo ""
+      echo "=========================================="
+      echo "=== Vérifications finales ==="
+      echo "=========================================="
+      df -h "$DATA_MOUNT" 2>/dev/null || df -h /
+      echo ""
+      docker info --format 'Docker root: {{.DockerRootDir}}' 2>&1
+
+      set +u
+      source "$SDKMAN_DIR/bin/sdkman-init.sh"
+      source "$NVM_DIR/nvm.sh"
+
+      echo ""
+      echo "Versions installées :"
+      java -version 2>&1 | head -1 || echo "⚠️  java introuvable"
+      echo "  SDKMAN: $(sdk version 2>&1 | grep -i script | head -1 || echo '?')"
+      echo "  Node:   $(node --version 2>&1 || echo '?')"
+      echo "  npm:    $(npm --version 2>&1 || echo '?')"
+      echo "  yarn:   $(yarn --version 2>&1 || echo '?')"
+      echo "  pnpm:   $(pnpm --version 2>&1 || echo '?')"
+      echo ""
+      echo "✅ Setup terminé avec succès."
+
+runcmd:
+  # --- 1. Installation Docker (dépôt officiel) ---
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - |
+    . /etc/os-release && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" \
+      > /etc/apt/sources.list.d/docker.list
+  - apt-get update -y
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  # Enable Docker mais ne démarre PAS : setup-data-disk.sh le fera après config data-root
+  - systemctl enable docker
+
+  # --- 2. Setup complet (Docker root, workspace, SDKMAN, Java, NVM, Node) ---
+  - /usr/local/sbin/setup-data-disk.sh
+
+  # --- 3. Vérifs globales ---
+  - git --version | tee -a /var/log/cloud-init-install.log
+  - docker --version | tee -a /var/log/cloud-init-install.log
+  - docker compose version | tee -a /var/log/cloud-init-install.log
+
+final_message: |
+  ✅ Cloud-init terminé pour ccp.
+
+  Environnement de travail sur /mnt/web3-node-provider-prod :
+    • workspace/  → projets (alias: ~/workspace, cd auto au login)
+    • docker/     → images, conteneurs, volumes Docker
+    • tools/      → SDKMAN + Java 25, NVM + Node 22
+    • cache/      → Maven/Gradle/npm/yarn/pip/go/cargo
+
+  Outils dispo après reconnexion SSH :
+    • java -version    → Java 25 (Amazon Corretto)
+    • node --version   → Node 22 (LTS)
+    • npm, yarn, pnpm  → installés globalement
+    • docker / docker compose
+
+  → Reconnecte-toi en SSH pour activer :
+      - docker sans sudo (groupe docker)
+      - SDKMAN + Java + NVM + Node auto-sourcés
+      - cd auto vers workspace
+  → Logs : /var/log/bootcmd-mount.log + /var/log/setup-data-disk.log

@@ -155,12 +155,20 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
     @Override
     public void ensureDataDir(Path dataDir, int ownerUid) throws IOException {
         Files.createDirectories(dataDir);
-        // eth-docker images run the EL process as UID 10000; without chown the container can't
-        // write to the bind-mounted host directory. Requires CAP_CHOWN (typically root).
+        // eth-docker images run the EL process as a non-root UID (10000 for Geth/Erigon/...,
+        // 10002 for Nethermind, 12000, ...) so the container can't write to the bind-mounted
+        // host directory unless ownership matches. chown(2) toward an UID outside the caller's
+        // own requires CAP_CHOWN, so we delegate via sudo. The non-interactive flag (-n) fails
+        // fast if the sudoers rule is missing or doesn't match (rather than blocking on a
+        // password prompt). Required sudoers entry — see bc-node-lifecycle/README.md:
+        //   <backend-user> ALL=(root) NOPASSWD: /usr/bin/chown -R *\:*
+        // /var/lib/platform/nodes/*/data
         run(
                 dataDir.getParent() == null ? dataDir : dataDir.getParent(),
                 null,
-                "chown",
+                "sudo",
+                "-n",
+                "/usr/bin/chown",
                 "-R",
                 ownerUid + ":" + ownerUid,
                 dataDir.toString());

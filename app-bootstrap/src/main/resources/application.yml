@@ -19,9 +19,10 @@ server:
 app:
   platform:
     eth-docker:
-      root-dir: ${PLATFORM_ROOT:/tmp/platform/nodes}
-      cache-dir: ${PLATFORM_CACHE:/tmp/platform/cache}
-      sha-cache-file: ${PLATFORM_SHA_CACHE:/tmp/platform/cache/eth-docker-sha}
+      root-dir: ${PLATFORM_ROOT:/var/lib/platform/nodes}
+      cache-dir: ${PLATFORM_CACHE:/var/lib/platform/cache}
+      sha-cache-file: ${PLATFORM_SHA_CACHE:/var/lib/platform/cache/eth-docker-sha}
+      templates-dir: ${PLATFORM_TEMPLATES:/var/lib/platform/templates}
 
 logging:
   level:

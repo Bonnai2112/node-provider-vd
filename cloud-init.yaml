@@ -1,12 +1,17 @@
 #cloud-config
 # ============================================================
 # Cloud-init Ubuntu on-prem
-# - User: ccp
+# - User: web3 (clé SSH gérée par cloud-init)
 # - Auto-détection du disque data (2e disque non-OS, > 10G)
 # - Mount → /mnt/web3-node-provider-prod
 # - Git, Docker, Docker Compose, SDKMAN + Java 25, NVM + Node 22
-# - Tout l'environnement de travail relocalisé sur le disque data
+# - Environnement de travail relocalisé sur le disque data
 # ============================================================
+
+# ----- SSH -----
+ssh_deletekeys: false
+ssh_pwauth: false
+no_ssh_fingerprints: true
 
 package_update: true
 package_upgrade: true
@@ -27,6 +32,16 @@ packages:
   - apt-transport-https
   - software-properties-common
 
+users:
+  - name: web3
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    groups: [sudo, docker, sdkman, nvm]
+    lock_passwd: true
+    # ⬇️ Remplacer par la/les clé(s) publique(s) SSH autorisée(s)
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMMisKM6NwtozhYlXL/Wx0N+pbnUmvh1F/s7ppoCORHr bonnai.ccp
+
 groups:
   - sdkman
   - nvm
@@ -34,68 +49,71 @@ groups:
 # ============================================================
 # bootcmd : auto-détection + mount du disque data
 # Exécuté à CHAQUE boot, avant runcmd
+# Forme liste [bash, -c, <script>] pour forcer bash au lieu de /bin/sh (dash)
 # ============================================================
 bootcmd:
-  - |
-    set -e
-    LOG=/var/log/bootcmd-mount.log
-    exec > >(tee -a "$LOG") 2>&1
-    echo "=== $(date) — bootcmd mount disque data ==="
+  - - bash
+    - -c
+    - |
+      set -e
+      LOG=/var/log/bootcmd-mount.log
+      exec > >(tee -a "$LOG") 2>&1
+      echo "=== $(date) — bootcmd mount disque data ==="
 
-    MOUNT_POINT="/mnt/web3-node-provider-prod"
-    FS_TYPE="ext4"
-    FS_LABEL="web3data"
-    MIN_SIZE_BYTES=10737418240   # 10 GiB
+      MOUNT_POINT="/mnt/web3-node-provider-prod"
+      FS_TYPE="ext4"
+      FS_LABEL="web3data"
+      MIN_SIZE_BYTES=10737418240   # 10 GiB
 
-    # Si déjà monté (via /etc/fstab), rien à faire
-    if mountpoint -q "$MOUNT_POINT"; then
-      echo "✓ $MOUNT_POINT déjà monté."
+      # Si déjà monté (via /etc/fstab), rien à faire
+      if mountpoint -q "$MOUNT_POINT"; then
+        echo "✓ $MOUNT_POINT déjà monté."
+        df -h "$MOUNT_POINT"
+        exit 0
+      fi
+
+      # 1. Cherche un disque labellisé "web3data" (cas reboot/réinstall)
+      DEVICE=$(blkid -L "$FS_LABEL" 2>/dev/null || true)
+
+      # 2. Sinon, auto-détection : 1er disque non-OS > 10G
+      if [ -z "$DEVICE" ]; then
+        for name in $(lsblk -ndo NAME,TYPE | awk '$2=="disk" {print $1}'); do
+          candidate="/dev/$name"
+          if lsblk -no MOUNTPOINTS "$candidate" 2>/dev/null \
+              | grep -qE "^(/|/boot)(/|$)"; then
+            continue
+          fi
+          size_bytes=$(lsblk -bndo SIZE "$candidate" 2>/dev/null || echo 0)
+          [ "$size_bytes" -lt "$MIN_SIZE_BYTES" ] && continue
+          DEVICE="$candidate"
+          break
+        done
+      fi
+
+      if [ -z "$DEVICE" ] || [ ! -b "$DEVICE" ]; then
+        echo "⚠️  Aucun disque data détecté, skip mount."
+        exit 0
+      fi
+      echo "→ Disque data: $DEVICE ($(lsblk -bndo SIZE "$DEVICE" | numfmt --to=iec))"
+
+      if ! blkid "$DEVICE" >/dev/null 2>&1; then
+        echo "→ Formatage de $DEVICE en $FS_TYPE (label=$FS_LABEL)..."
+        mkfs.ext4 -F -L "$FS_LABEL" "$DEVICE"
+      else
+        echo "→ Déjà formaté: $(blkid "$DEVICE")"
+      fi
+
+      mkdir -p "$MOUNT_POINT"
+
+      UUID=$(blkid -s UUID -o value "$DEVICE")
+      if ! grep -q "$UUID" /etc/fstab; then
+        echo "→ Ajout fstab: UUID=$UUID → $MOUNT_POINT"
+        echo "UUID=$UUID $MOUNT_POINT $FS_TYPE defaults,nofail 0 2" >> /etc/fstab
+      fi
+
+      mount "$MOUNT_POINT"
       df -h "$MOUNT_POINT"
-      exit 0
-    fi
-
-    # 1. Cherche un disque labellisé "web3data" (cas reboot/réinstall)
-    DEVICE=$(blkid -L "$FS_LABEL" 2>/dev/null || true)
-
-    # 2. Sinon, auto-détection : 1er disque non-OS > 10G
-    if [ -z "$DEVICE" ]; then
-      for name in $(lsblk -ndo NAME,TYPE | awk '$2=="disk" {print $1}'); do
-        candidate="/dev/$name"
-        if lsblk -no MOUNTPOINTS "$candidate" 2>/dev/null \
-            | grep -qE "^(/|/boot)(/|$)"; then
-          continue
-        fi
-        size_bytes=$(lsblk -bndo SIZE "$candidate" 2>/dev/null || echo 0)
-        [ "$size_bytes" -lt "$MIN_SIZE_BYTES" ] && continue
-        DEVICE="$candidate"
-        break
-      done
-    fi
-
-    if [ -z "$DEVICE" ] || [ ! -b "$DEVICE" ]; then
-      echo "⚠️  Aucun disque data détecté, skip mount."
-      exit 0
-    fi
-    echo "→ Disque data: $DEVICE ($(lsblk -bndo SIZE "$DEVICE" | numfmt --to=iec))"
-
-    if ! blkid "$DEVICE" >/dev/null 2>&1; then
-      echo "→ Formatage de $DEVICE en $FS_TYPE (label=$FS_LABEL)..."
-      mkfs.ext4 -F -L "$FS_LABEL" "$DEVICE"
-    else
-      echo "→ Déjà formaté: $(blkid "$DEVICE")"
-    fi
-
-    mkdir -p "$MOUNT_POINT"
-
-    UUID=$(blkid -s UUID -o value "$DEVICE")
-    if ! grep -q "$UUID" /etc/fstab; then
-      echo "→ Ajout fstab: UUID=$UUID → $MOUNT_POINT"
-      echo "UUID=$UUID $MOUNT_POINT $FS_TYPE defaults,nofail 0 2" >> /etc/fstab
-    fi
-
-    mount "$MOUNT_POINT"
-    df -h "$MOUNT_POINT"
-    echo "✓ $DEVICE monté sur $MOUNT_POINT"
+      echo "✓ $DEVICE monté sur $MOUNT_POINT"
 
 write_files:
   # ============================================================
@@ -110,7 +128,7 @@ write_files:
 
       # === Configuration ===
       DATA_MOUNT="/mnt/web3-node-provider-prod"
-      TARGET_USER="ccp"
+      TARGET_USER="web3"
       JAVA_VERSION="25.0.3-amzn"
       NODE_VERSION="22"
       NVM_FALLBACK_VERSION="v0.40.4"
@@ -129,14 +147,6 @@ write_files:
       # Installe un outil utilisateur (clone/curl style) dans un dossier dédié.
       # Gère le comportement opposé de SDKMAN (refuse si dossier existe)
       # vs NVM (exige que le dossier existe).
-      #
-      # Usage:
-      #   install_user_tool <nom> <target_dir> <group> <init_check_file> \
-      #     <pre_install_mode> <install_command>
-      #
-      # pre_install_mode :
-      #   "create_dir"   → mkdir le dossier cible (pour NVM)
-      #   "create_parent" → mkdir seulement le parent (pour SDKMAN)
       install_user_tool() {
         local name="$1"
         local target_dir="$2"
@@ -170,7 +180,6 @@ write_files:
             ;;
         esac
 
-        # Lance l'install en tant que $TARGET_USER
         sudo -u "$TARGET_USER" bash -c "$install_cmd"
 
         if [[ ! -s "$target_dir/$init_file" ]]; then
@@ -352,7 +361,7 @@ write_files:
       # ========================================================
       # ÉTAPE 7 — SDKMAN
       # ========================================================
-      # SDKMAN refuse de s'installer si $SDKMAN_DIR existe déjà (même vide).
+      # SDKMAN refuse de s'installer si $SDKMAN_DIR existe déjà.
       # Mode: create_parent → on crée seulement le parent et SDKMAN crée son dossier.
       echo "[7/12] Installation SDKMAN dans $SDKMAN_DIR..."
       SDKMAN_INSTALL_CMD="
@@ -364,7 +373,7 @@ write_files:
       install_user_tool "SDKMAN" "$SDKMAN_DIR" "sdkman" "bin/sdkman-init.sh" \
         "create_parent" "$SDKMAN_INSTALL_CMD"
 
-      # Config non-interactive (à appliquer seulement après install fraîche)
+      # Config non-interactive
       if [[ -f "$SDKMAN_DIR/etc/config" ]]; then
         sed -i 's/sdkman_auto_answer=false/sdkman_auto_answer=true/' "$SDKMAN_DIR/etc/config"
         sed -i 's/sdkman_selfupdate_feature=true/sdkman_selfupdate_feature=false/' "$SDKMAN_DIR/etc/config"
@@ -390,18 +399,15 @@ write_files:
         echo "  ✓ Java $JAVA_VERSION installé"
       fi
 
-      # Réapplique les perms après install Java (nouveaux fichiers dans candidates/)
       apply_shared_perms "$SDKMAN_DIR" "sdkman"
 
       # ========================================================
       # ÉTAPE 10 — NVM
       # ========================================================
       # NVM EXIGE que $NVM_DIR existe ET appartienne au user qui lance l'install.
-      # Sinon il échoue avec : "NVM_DIR set to ... but that directory does not exist".
       # Mode: create_dir → on crée le dossier cible avant l'install.
       echo "[10/12] Installation NVM dans $NVM_DIR..."
 
-      # Récupère la dernière version stable (fallback si l'API GitHub râle)
       NVM_LATEST=$(curl -fsSL https://api.github.com/repos/nvm-sh/nvm/releases/latest 2>/dev/null \
         | grep '"tag_name"' | head -1 | cut -d'"' -f4 || true)
       NVM_LATEST="${NVM_LATEST:-$NVM_FALLBACK_VERSION}"
@@ -435,7 +441,6 @@ write_files:
         echo "  ✓ Node $NODE_VERSION + npm/yarn/pnpm installés"
       fi
 
-      # Réapplique les perms après les installs npm globaux
       apply_shared_perms "$NVM_DIR" "nvm"
 
       # ========================================================
@@ -493,7 +498,7 @@ runcmd:
   # Enable Docker mais ne démarre PAS : setup-data-disk.sh le fera après config data-root
   - systemctl enable docker
 
-  # --- 2. Setup complet (Docker root, workspace, SDKMAN, Java, NVM, Node) ---
+  # --- 2. Setup complet ---
   - /usr/local/sbin/setup-data-disk.sh
 
   # --- 3. Vérifs globales ---
@@ -502,7 +507,7 @@ runcmd:
   - docker compose version | tee -a /var/log/cloud-init-install.log
 
 final_message: |
-  ✅ Cloud-init terminé pour ccp.
+  ✅ Cloud-init terminé pour web3.
 
   Environnement de travail sur /mnt/web3-node-provider-prod :
     • workspace/  → projets (alias: ~/workspace, cd auto au login)
@@ -516,8 +521,5 @@ final_message: |
     • npm, yarn, pnpm  → installés globalement
     • docker / docker compose
 
-  → Reconnecte-toi en SSH pour activer :
-      - docker sans sudo (groupe docker)
-      - SDKMAN + Java + NVM + Node auto-sourcés
-      - cd auto vers workspace
+  → Connexion SSH : ssh web3@<ip-de-la-vm> avec ta clé privée
   → Logs : /var/log/bootcmd-mount.log + /var/log/setup-data-disk.log

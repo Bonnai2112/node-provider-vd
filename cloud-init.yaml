@@ -27,16 +27,6 @@ packages:
   - apt-transport-https
   - software-properties-common
 
-users:
-  - name: ccp
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    shell: /bin/bash
-    groups: [sudo, docker, sdkman, nvm]
-    lock_passwd: true
-    # ⚠️ Ajoute ta clé SSH publique :
-    # ssh_authorized_keys:
-    #   - ssh-ed25519 AAAA... ton-commentaire
-
 groups:
   - sdkman
   - nvm

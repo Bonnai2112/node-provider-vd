@@ -241,6 +241,7 @@ write_files:
         DOCKER_ROOT="$DATA_MOUNT/docker"
         SDKMAN_DIR="$TOOLS_DIR/sdkman"
         NVM_DIR="$TOOLS_DIR/nvm"
+        PLATFORM_DATA_DIR="$DATA_MOUNT/platform"
         echo "  ✓ Mode disque data: $DATA_MOUNT"
       else
         DATA_MOUNT="/var/local"
@@ -250,14 +251,16 @@ write_files:
         DOCKER_ROOT="/var/lib/docker"
         SDKMAN_DIR="/opt/sdkman"
         NVM_DIR="/opt/nvm"
+        PLATFORM_DATA_DIR=""   # pas de redirection : /var/lib/platform sur disque OS
         echo "  ⚠️  Mode fallback (disque OS)"
       fi
-      echo "    WORKSPACE   = $WORKSPACE"
-      echo "    TOOLS_DIR   = $TOOLS_DIR"
-      echo "    CACHE_DIR   = $CACHE_DIR"
-      echo "    DOCKER_ROOT = $DOCKER_ROOT"
-      echo "    SDKMAN_DIR  = $SDKMAN_DIR"
-      echo "    NVM_DIR     = $NVM_DIR"
+      echo "    WORKSPACE         = $WORKSPACE"
+      echo "    TOOLS_DIR         = $TOOLS_DIR"
+      echo "    CACHE_DIR         = $CACHE_DIR"
+      echo "    DOCKER_ROOT       = $DOCKER_ROOT"
+      echo "    SDKMAN_DIR        = $SDKMAN_DIR"
+      echo "    NVM_DIR           = $NVM_DIR"
+      echo "    PLATFORM_DATA_DIR = ${PLATFORM_DATA_DIR:-<fallback: /var/lib/platform>}"
 
       # ========================================================
       # ÉTAPE 3 — User + structure de dossiers
@@ -272,6 +275,32 @@ write_files:
 
       ln -sfn "$WORKSPACE" "/home/$TARGET_USER/workspace"
       chown -h "$TARGET_USER:$TARGET_USER" "/home/$TARGET_USER/workspace"
+
+      # Runtime de la plateforme (cf. bc-node-lifecycle/README §config) :
+      #   /var/lib/platform/{cache,nodes,templates}
+      # cache + nodes sont écrits par l'app (uid web3) ; templates est écrit
+      # par le job systemd `produce-el-template@` (root) et relu par l'app.
+      # En mode disque data : on stocke réellement sur le disque data
+      # (chaindata = plusieurs centaines de Go par nœud) et on symlinke
+      # subdir-par-subdir depuis /var/lib/platform — pattern aligné avec
+      # WORKSPACE / DOCKER_ROOT redirigés au même endroit.
+      mkdir -p /var/lib/platform
+      if [[ -n "$PLATFORM_DATA_DIR" ]]; then
+        mkdir -p "$PLATFORM_DATA_DIR"/{cache,nodes,templates}
+        chown -R "$TARGET_USER:$TARGET_USER" "$PLATFORM_DATA_DIR"
+        for sub in cache nodes templates; do
+          link="/var/lib/platform/$sub"
+          target="$PLATFORM_DATA_DIR/$sub"
+          if [[ -e "$link" && ! -L "$link" ]]; then
+            echo "  ⚠️  $link existe comme dossier réel — pas de symlink, à migrer manuellement."
+          else
+            ln -sfn "$target" "$link"
+          fi
+        done
+      else
+        mkdir -p /var/lib/platform/{cache,nodes,templates}
+        chown -R "$TARGET_USER:$TARGET_USER" /var/lib/platform
+      fi
 
       # ========================================================
       # ÉTAPE 4 — Profile global

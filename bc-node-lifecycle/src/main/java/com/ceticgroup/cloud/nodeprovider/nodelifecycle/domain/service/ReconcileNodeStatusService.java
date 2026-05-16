@@ -68,17 +68,22 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
             return;
         }
         RuntimeStatus runtime = orchestration.getDeploymentStatus(ref);
+        // Public endpoint is what we'll persist on the aggregate and expose to API consumers when
+        // we transition to Ready — it's bound to the host's public IP and may not be reachable
+        // from this very VM (no hairpin NAT on Cetic cloud). For probing the running containers
+        // we must use the loopback-bound endpoint instead.
         Optional<JsonRpcEndpoint> elEndpoint = orchestration.endpointFor(ref);
-        Optional<URI> clEndpoint = orchestration.clRestEndpointFor(ref);
+        Optional<JsonRpcEndpoint> elProbeEndpoint = orchestration.internalEndpointFor(ref);
+        Optional<URI> clProbeEndpoint = orchestration.internalClRestEndpointFor(ref);
         Optional<ExecutionSyncStatus> elSync = Optional.empty();
         OptionalInt peers = OptionalInt.empty();
         Optional<ConsensusSyncStatus> clSync = Optional.empty();
-        if (elEndpoint.isPresent()) {
-            elSync = probe.probeElSync(elEndpoint.get());
-            peers = probe.probePeers(elEndpoint.get());
+        if (elProbeEndpoint.isPresent()) {
+            elSync = probe.probeElSync(elProbeEndpoint.get());
+            peers = probe.probePeers(elProbeEndpoint.get());
         }
-        if (clEndpoint.isPresent()) {
-            clSync = probe.probeClSync(clEndpoint.get());
+        if (clProbeEndpoint.isPresent()) {
+            clSync = probe.probeClSync(clProbeEndpoint.get());
         }
 
         Instant now = clock.instant();

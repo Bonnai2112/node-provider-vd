@@ -346,7 +346,8 @@ class ReconcileNodeStatusServiceTest {
         Node node = newNodeIn(new NodeStatus.Degraded("flaky"), REF);
         when(orchestration.getDeploymentStatus(REF)).thenReturn(new RuntimeStatus.Unknown());
         when(orchestration.endpointFor(REF)).thenReturn(Optional.empty());
-        when(orchestration.clRestEndpointFor(REF)).thenReturn(Optional.empty());
+        when(orchestration.internalEndpointFor(REF)).thenReturn(Optional.empty());
+        when(orchestration.internalClRestEndpointFor(REF)).thenReturn(Optional.empty());
         when(repository.findNonTerminal()).thenReturn(List.of(node));
 
         service.reconcileAll();
@@ -364,7 +365,8 @@ class ReconcileNodeStatusServiceTest {
         when(repository.findNonTerminal()).thenReturn(List.of(node));
         when(orchestration.getDeploymentStatus(REF)).thenReturn(bothRunning());
         when(orchestration.endpointFor(REF)).thenReturn(Optional.of(ENDPOINT));
-        when(orchestration.clRestEndpointFor(REF)).thenReturn(Optional.of(CL_ENDPOINT));
+        when(orchestration.internalEndpointFor(REF)).thenReturn(Optional.of(ENDPOINT));
+        when(orchestration.internalClRestEndpointFor(REF)).thenReturn(Optional.of(CL_ENDPOINT));
         when(probe.probePeers(ENDPOINT)).thenReturn(OptionalInt.of(5));
         when(probe.probeElSync(ENDPOINT))
                 .thenReturn(Optional.of(new ExecutionSyncStatus.Syncing(200, 100)))
@@ -396,7 +398,8 @@ class ReconcileNodeStatusServiceTest {
         when(repository.findNonTerminal()).thenReturn(List.of(node));
         when(orchestration.getDeploymentStatus(REF)).thenReturn(bothRunning());
         when(orchestration.endpointFor(REF)).thenReturn(Optional.of(ENDPOINT));
-        when(orchestration.clRestEndpointFor(REF)).thenReturn(Optional.of(CL_ENDPOINT));
+        when(orchestration.internalEndpointFor(REF)).thenReturn(Optional.of(ENDPOINT));
+        when(orchestration.internalClRestEndpointFor(REF)).thenReturn(Optional.of(CL_ENDPOINT));
         when(probe.probePeers(ENDPOINT))
                 .thenReturn(OptionalInt.of(7))
                 .thenReturn(OptionalInt.empty());
@@ -452,7 +455,8 @@ class ReconcileNodeStatusServiceTest {
             int peers) {
         when(orchestration.getDeploymentStatus(REF)).thenReturn(runtime);
         when(orchestration.endpointFor(REF)).thenReturn(Optional.of(ENDPOINT));
-        when(orchestration.clRestEndpointFor(REF)).thenReturn(Optional.of(CL_ENDPOINT));
+        when(orchestration.internalEndpointFor(REF)).thenReturn(Optional.of(ENDPOINT));
+        when(orchestration.internalClRestEndpointFor(REF)).thenReturn(Optional.of(CL_ENDPOINT));
         when(probe.probeElSync(ENDPOINT)).thenReturn(Optional.of(elSync));
         when(probe.probePeers(ENDPOINT)).thenReturn(OptionalInt.of(peers));
         when(probe.probeClSync(CL_ENDPOINT)).thenReturn(Optional.of(clSync));
@@ -461,7 +465,8 @@ class ReconcileNodeStatusServiceTest {
     private void stubUnreachableProbes(RuntimeStatus runtime) {
         when(orchestration.getDeploymentStatus(REF)).thenReturn(runtime);
         when(orchestration.endpointFor(REF)).thenReturn(Optional.of(ENDPOINT));
-        when(orchestration.clRestEndpointFor(REF)).thenReturn(Optional.of(CL_ENDPOINT));
+        when(orchestration.internalEndpointFor(REF)).thenReturn(Optional.of(ENDPOINT));
+        when(orchestration.internalClRestEndpointFor(REF)).thenReturn(Optional.of(CL_ENDPOINT));
         when(probe.probeElSync(ENDPOINT)).thenReturn(Optional.empty());
         when(probe.probePeers(ENDPOINT)).thenReturn(OptionalInt.empty());
         when(probe.probeClSync(CL_ENDPOINT)).thenReturn(Optional.empty());

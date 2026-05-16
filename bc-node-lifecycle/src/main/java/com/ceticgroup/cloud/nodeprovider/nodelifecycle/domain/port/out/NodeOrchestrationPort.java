@@ -15,9 +15,21 @@ public interface NodeOrchestrationPort {
 
     RuntimeStatus getDeploymentStatus(DeploymentRef ref);
 
+    /**
+     * Endpoint advertised to external API consumers (bound to the host's public IP). May not be
+     * reachable from the backend itself if the cloud provider doesn't support hairpin NAT — for
+     * health probes use {@link #internalEndpointFor} instead.
+     */
     Optional<JsonRpcEndpoint> endpointFor(DeploymentRef ref);
 
-    Optional<URI> clRestEndpointFor(DeploymentRef ref);
+    /**
+     * Loopback-bound endpoint used by the in-process reconciler to probe the EL. Always reachable
+     * from the same VM since the container publishes on 0.0.0.0:{port}.
+     */
+    Optional<JsonRpcEndpoint> internalEndpointFor(DeploymentRef ref);
+
+    /** Loopback-bound CL REST endpoint used by the reconciler. Not exposed via the public API. */
+    Optional<URI> internalClRestEndpointFor(DeploymentRef ref);
 
     /**
      * True when the underlying workdir/volumes are still on disk so the deployment can be brought

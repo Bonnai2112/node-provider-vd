@@ -376,7 +376,48 @@ class EthDockerOrchestrationAdapterTest {
     }
 
     @Test
-    void clRestEndpointFor_should_useConfiguredPublicHost_when_overridden() throws Exception {
+    void internalEndpointFor_should_use127001_evenWhenPublicHostIsOverridden() throws Exception {
+        // Internal probes must hit loopback: many clouds don't support hairpin NAT, so a request
+        // from this VM to its own public IP times out. The endpoint persisted on the aggregate
+        // (endpointFor) keeps the public host since it's what API consumers see.
+        EthDockerProperties propsWithIp =
+                new EthDockerProperties(
+                        "https://example.invalid/eth-docker.git",
+                        "v26.4.1",
+                        "/tmp/platform/nodes",
+                        "/tmp/platform/cache",
+                        "/tmp/platform/cache/sha",
+                        "/tmp/platform/templates",
+                        "203.0.113.42");
+        EthDockerOrchestrationAdapter adapterWithIp =
+                new EthDockerOrchestrationAdapter(
+                        propsWithIp,
+                        portAllocator,
+                        refResolver,
+                        shell,
+                        inspector,
+                        checkpointLocator,
+                        templateLocator,
+                        networkManager,
+                        mapper);
+        DeploymentPayload payload =
+                new DeploymentPayload(
+                        "/tmp/x",
+                        "node-12345678",
+                        new AllocatedPorts(30123, 30101, 30102, 30103, 30104, 30105, 30106),
+                        new EthDockerRef("v26.4.1", "abc"),
+                        null);
+        DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
+
+        Optional<JsonRpcEndpoint> endpoint = adapterWithIp.internalEndpointFor(ref);
+
+        assertThat(endpoint).isPresent();
+        assertThat(endpoint.get().uri().toString()).isEqualTo("http://127.0.0.1:30123");
+    }
+
+    @Test
+    void internalClRestEndpointFor_should_use127001_evenWhenPublicHostIsOverridden()
+            throws Exception {
         EthDockerProperties propsWithIp =
                 new EthDockerProperties(
                         "https://example.invalid/eth-docker.git",
@@ -406,9 +447,9 @@ class EthDockerOrchestrationAdapterTest {
                         null);
         DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
 
-        Optional<URI> endpoint = adapterWithIp.clRestEndpointFor(ref);
+        Optional<URI> endpoint = adapterWithIp.internalClRestEndpointFor(ref);
 
         assertThat(endpoint).isPresent();
-        assertThat(endpoint.get().toString()).isEqualTo("http://203.0.113.42:30104");
+        assertThat(endpoint.get().toString()).isEqualTo("http://127.0.0.1:30104");
     }
 }

@@ -7,16 +7,15 @@ restauré par la plateforme au provisioning de nouveaux nœuds. Cf. la décision
 ## Contrat
 
 Un tarball par couple `(network, el-client)` supporté en restauration côté
-plateforme. À ce jour : **besu + geth** uniquement.
+plateforme. À ce jour : **geth** uniquement.
 
 Layout attendu sur l'hôte :
 
 ```
 /var/lib/platform/
 ├── templates/
-│   ├── hoodi-besu.tar.zst
 │   ├── hoodi-geth.tar.zst
-│   └── sepolia-besu.tar.zst
+│   └── sepolia-geth.tar.zst
 └── nodes/
     └── <node-uuid>/
         ├── eth-docker/   ← clone eth-docker (compose files, .env)
@@ -51,21 +50,21 @@ sudo systemctl daemon-reload
 
 ```sh
 sudo install -d -m 0750 /etc/platform/templates
-sudo cp ops/example-hoodi-besu.env /etc/platform/templates/hoodi-besu.env
-sudo $EDITOR /etc/platform/templates/hoodi-besu.env
+sudo cp ops/example-hoodi-geth.env /etc/platform/templates/hoodi-geth.env
+sudo $EDITOR /etc/platform/templates/hoodi-geth.env
 # Remplir FROZEN_NODE_DIR et EL_DATA_DIR avec l'UUID du nœud frozen.
-sudo chmod 0640 /etc/platform/templates/hoodi-besu.env
+sudo chmod 0640 /etc/platform/templates/hoodi-geth.env
 ```
 
 ### 4. Premier run + activation du timer
 
 ```sh
 # Vérifier que le script tourne avant d'enclencher le timer.
-sudo systemctl start produce-el-template@hoodi-besu.service
-sudo journalctl -u produce-el-template@hoodi-besu.service -f
+sudo systemctl start produce-el-template@hoodi-geth.service
+sudo journalctl -u produce-el-template@hoodi-geth.service -f
 
 # Une fois validé : enclencher le timer (1x/jour à 03:00).
-sudo systemctl enable --now produce-el-template@hoodi-besu.timer
+sudo systemctl enable --now produce-el-template@hoodi-geth.timer
 systemctl list-timers produce-el-template@*.timer
 ```
 
@@ -82,9 +81,9 @@ systemctl list-timers produce-el-template@*.timer
 ## Retirer un couple
 
 ```sh
-sudo systemctl disable --now produce-el-template@hoodi-besu.timer
-sudo rm /etc/platform/templates/hoodi-besu.env
-sudo rm /var/lib/platform/templates/hoodi-besu.tar.zst  # optionnel
+sudo systemctl disable --now produce-el-template@hoodi-geth.timer
+sudo rm /etc/platform/templates/hoodi-geth.env
+sudo rm /var/lib/platform/templates/hoodi-geth.tar.zst  # optionnel
 ```
 
 Les nouveaux provisionnings retombent en sync from-scratch tant qu'aucun

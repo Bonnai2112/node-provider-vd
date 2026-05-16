@@ -5,7 +5,7 @@
 # Triggered by produce-el-template@<network>-<el>.timer.
 # Required env (typically set via /etc/platform/templates/<network>-<el>.env):
 #   NETWORK              hoodi | sepolia
-#   EL_CLIENT            besu | geth
+#   EL_CLIENT            geth
 #   FROZEN_NODE_DIR      eth-docker workdir of the frozen node (contains .env + compose files)
 #   EL_DATA_DIR          host path of the frozen node's bind-mounted EL datadir
 # Optional:

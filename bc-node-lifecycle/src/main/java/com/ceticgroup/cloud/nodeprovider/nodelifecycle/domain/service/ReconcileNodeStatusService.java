@@ -141,14 +141,16 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
         if (!(runtime instanceof RuntimeStatus.Healthy h)) {
             return false;
         }
-        if (coreFault(h)) {
-            haltOrFail(node, h, canRestart);
-            return true;
-        }
         if (bothRunning(h)) {
             node.markSyncing();
             return true;
         }
+        // Don't transition on coreFault here: PROVISIONING is the window where containers are
+        // being created (deployAsync or restartAsync runs runEthdUp asynchronously, taking several
+        // seconds). A reconciler tick that lands before the containers exist would otherwise see
+        // EL/CL=Absent and revert the node to STOPPED/FAILED, racing the very startup we expect.
+        // The async restart/deploy paths take care of escalating to FAILED themselves when
+        // runEthdUp throws.
         return false;
     }
 

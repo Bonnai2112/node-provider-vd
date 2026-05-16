@@ -102,62 +102,38 @@ class ReconcileNodeStatusServiceTest {
     }
 
     @Test
-    void reconcileAll_should_stopNode_when_provisioningAndElCrashedWithWorkdirIntact() {
+    void reconcileAll_should_stayInProvisioning_when_layersAbsentOrCrashed() {
+        // PROVISIONING is the window during which runEthdUp is creating containers asynchronously.
+        // A reconciler tick that fires before the containers exist must not race the startup
+        // — otherwise a restart from STOPPED gets reverted to STOPPED before runEthdUp finishes.
+        Node node = newNodeIn(new NodeStatus.Provisioning(), REF);
+        stubProbes(
+                healthy(new LayerState.Absent(), new LayerState.Absent()),
+                new ExecutionSyncStatus.NotSyncing(),
+                new ConsensusSyncStatus.NotSyncing(),
+                0);
+        when(repository.findNonTerminal()).thenReturn(List.of(node));
+
+        service.reconcileAll();
+
+        assertThat(node.status()).isInstanceOf(NodeStatus.Provisioning.class);
+    }
+
+    @Test
+    void reconcileAll_should_stayInProvisioning_when_oneLayerCrashedWhileStillStartingUp() {
         Node node = newNodeIn(new NodeStatus.Provisioning(), REF);
         stubProbes(
                 healthy(new LayerState.Crashed("oom"), new LayerState.Running()),
                 new ExecutionSyncStatus.NotSyncing(),
                 new ConsensusSyncStatus.NotSyncing(),
                 0);
-        when(orchestration.canRestart(REF)).thenReturn(true);
         when(repository.findNonTerminal()).thenReturn(List.of(node));
 
         service.reconcileAll();
 
-        assertThat(node.status())
-                .isInstanceOfSatisfying(
-                        NodeStatus.Stopped.class,
-                        s -> {
-                            assertThat(s.reason()).contains("EL=Crashed(oom)");
-                            assertThat(s.reason()).contains("CL=Running");
-                        });
-        verify(repository).save(node);
-    }
-
-    @Test
-    void reconcileAll_should_stopNode_when_provisioningAndClCrashedWithWorkdirIntact() {
-        Node node = newNodeIn(new NodeStatus.Provisioning(), REF);
-        stubProbes(
-                healthy(new LayerState.Running(), new LayerState.Crashed("panic")),
-                new ExecutionSyncStatus.NotSyncing(),
-                new ConsensusSyncStatus.NotSyncing(),
-                0);
-        when(orchestration.canRestart(REF)).thenReturn(true);
-        when(repository.findNonTerminal()).thenReturn(List.of(node));
-
-        service.reconcileAll();
-
-        assertThat(node.status())
-                .isInstanceOfSatisfying(
-                        NodeStatus.Stopped.class,
-                        s -> assertThat(s.reason()).contains("CL=Crashed(panic)"));
-    }
-
-    @Test
-    void reconcileAll_should_failNode_when_coreFaultAndWorkdirGone() {
-        Node node = newNodeIn(new NodeStatus.Provisioning(), REF);
-        stubProbes(
-                healthy(new LayerState.Crashed("oom"), new LayerState.Running()),
-                new ExecutionSyncStatus.NotSyncing(),
-                new ConsensusSyncStatus.NotSyncing(),
-                0);
-        when(orchestration.canRestart(REF)).thenReturn(false);
-        when(repository.findNonTerminal()).thenReturn(List.of(node));
-
-        service.reconcileAll();
-
-        // No workdir to restart from → terminal Failed, manual re-deploy required.
-        assertThat(node.status()).isInstanceOf(NodeStatus.Failed.class);
+        // The async path (ProvisionNodeService / RestartNodeService) is responsible for escalating
+        // to FAILED if runEthdUp itself throws; the reconciler stays patient during PROVISIONING.
+        assertThat(node.status()).isInstanceOf(NodeStatus.Provisioning.class);
     }
 
     @Test

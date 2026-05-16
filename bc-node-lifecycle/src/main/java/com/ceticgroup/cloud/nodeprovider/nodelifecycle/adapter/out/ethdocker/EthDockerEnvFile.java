@@ -149,6 +149,10 @@ public final class EthDockerEnvFile {
         env.put("COMPOSE_PROJECT_NAME", composeProjectName);
         env.put("NODE_SHORT_ID", shortId(spec.nodeId()));
         env.put("EL_HOST", "0.0.0.0");
+        // Bind published host ports on every interface so the JSON-RPC URL we announce
+        // (publicHost from EthDockerProperties) is actually reachable from outside the VM.
+        // Without this the compose override falls back to 127.0.0.1 and the URL is unreachable.
+        env.put("HOST_IP", "0.0.0.0");
         // EL_RPC_HOST_PORT / EL_WS_HOST_PORT / CL_REST_HOST_PORT are *our* override variables,
         // consumed only by host-ports.yml. Do NOT set EL_RPC_PORT / EL_WS_PORT / CL_REST_PORT
         // here: those would be passed as --http.port / --http-port flags to geth/lighthouse and

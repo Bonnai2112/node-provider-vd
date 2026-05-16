@@ -40,7 +40,8 @@ class EthDockerOrchestrationAdapterTest {
                     "/tmp/platform/nodes",
                     "/tmp/platform/cache",
                     "/tmp/platform/cache/sha",
-                    "/tmp/platform/templates");
+                    "/tmp/platform/templates",
+                    "localhost");
 
     @Mock private PortAllocator portAllocator;
     @Mock private EthDockerRefResolver refResolver;
@@ -335,5 +336,79 @@ class EthDockerOrchestrationAdapterTest {
 
         assertThat(endpoint).isPresent();
         assertThat(endpoint.get().uri().toString()).isEqualTo("http://localhost:30123");
+    }
+
+    @Test
+    void endpointFor_should_useConfiguredPublicHost_when_overridden() throws Exception {
+        EthDockerProperties propsWithIp =
+                new EthDockerProperties(
+                        "https://example.invalid/eth-docker.git",
+                        "v26.4.1",
+                        "/tmp/platform/nodes",
+                        "/tmp/platform/cache",
+                        "/tmp/platform/cache/sha",
+                        "/tmp/platform/templates",
+                        "203.0.113.42");
+        EthDockerOrchestrationAdapter adapterWithIp =
+                new EthDockerOrchestrationAdapter(
+                        propsWithIp,
+                        portAllocator,
+                        refResolver,
+                        shell,
+                        inspector,
+                        checkpointLocator,
+                        templateLocator,
+                        networkManager,
+                        mapper);
+        DeploymentPayload payload =
+                new DeploymentPayload(
+                        "/tmp/x",
+                        "node-12345678",
+                        new AllocatedPorts(30123, 30101, 30102, 30103, 30104, 30105, 30106),
+                        new EthDockerRef("v26.4.1", "abc"),
+                        null);
+        DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
+
+        Optional<JsonRpcEndpoint> endpoint = adapterWithIp.endpointFor(ref);
+
+        assertThat(endpoint).isPresent();
+        assertThat(endpoint.get().uri().toString()).isEqualTo("http://203.0.113.42:30123");
+    }
+
+    @Test
+    void clRestEndpointFor_should_useConfiguredPublicHost_when_overridden() throws Exception {
+        EthDockerProperties propsWithIp =
+                new EthDockerProperties(
+                        "https://example.invalid/eth-docker.git",
+                        "v26.4.1",
+                        "/tmp/platform/nodes",
+                        "/tmp/platform/cache",
+                        "/tmp/platform/cache/sha",
+                        "/tmp/platform/templates",
+                        "203.0.113.42");
+        EthDockerOrchestrationAdapter adapterWithIp =
+                new EthDockerOrchestrationAdapter(
+                        propsWithIp,
+                        portAllocator,
+                        refResolver,
+                        shell,
+                        inspector,
+                        checkpointLocator,
+                        templateLocator,
+                        networkManager,
+                        mapper);
+        DeploymentPayload payload =
+                new DeploymentPayload(
+                        "/tmp/x",
+                        "node-12345678",
+                        new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106),
+                        new EthDockerRef("v26.4.1", "abc"),
+                        null);
+        DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
+
+        Optional<URI> endpoint = adapterWithIp.clRestEndpointFor(ref);
+
+        assertThat(endpoint).isPresent();
+        assertThat(endpoint.get().toString()).isEqualTo("http://203.0.113.42:30104");
     }
 }

@@ -23,6 +23,7 @@ app:
       cache-dir: ${PLATFORM_CACHE:/var/lib/platform/cache}
       sha-cache-file: ${PLATFORM_SHA_CACHE:/var/lib/platform/cache/eth-docker-sha}
       templates-dir: ${PLATFORM_TEMPLATES:/var/lib/platform/templates}
+      public-host: ${PLATFORM_PUBLIC_HOST:163.172.232.194}
 
 logging:
   level:

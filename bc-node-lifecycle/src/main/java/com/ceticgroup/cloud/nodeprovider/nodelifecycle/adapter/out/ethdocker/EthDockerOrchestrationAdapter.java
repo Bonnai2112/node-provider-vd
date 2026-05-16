@@ -151,13 +151,20 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
     public Optional<JsonRpcEndpoint> endpointFor(DeploymentRef ref) {
         DeploymentPayload payload = deserialize(ref);
         return Optional.of(
-                new JsonRpcEndpoint(URI.create("http://localhost:" + payload.ports().elRpcPort())));
+                new JsonRpcEndpoint(
+                        URI.create(
+                                "http://"
+                                        + properties.publicHost()
+                                        + ":"
+                                        + payload.ports().elRpcPort())));
     }
 
     @Override
     public Optional<URI> clRestEndpointFor(DeploymentRef ref) {
         DeploymentPayload payload = deserialize(ref);
-        return Optional.of(URI.create("http://localhost:" + payload.ports().clRestPort()));
+        return Optional.of(
+                URI.create(
+                        "http://" + properties.publicHost() + ":" + payload.ports().clRestPort()));
     }
 
     private String serialize(DeploymentPayload payload) {

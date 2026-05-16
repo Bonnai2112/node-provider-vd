@@ -9,7 +9,8 @@ public record EthDockerProperties(
         String rootDir,
         String cacheDir,
         String shaCacheFile,
-        String templatesDir) {
+        String templatesDir,
+        String publicHost) {
 
     public EthDockerProperties {
         if (repoUrl == null || repoUrl.isBlank()) {
@@ -29,6 +30,12 @@ public record EthDockerProperties(
         }
         if (templatesDir == null || templatesDir.isBlank()) {
             templatesDir = "/var/lib/platform/templates";
+        }
+        // Host announced in the JSON-RPC URL handed to API consumers, and bound on the
+        // host side via HOST_IP in the compose override. Default keeps local dev working;
+        // operators set the VM public IP via the PLATFORM_PUBLIC_HOST env var.
+        if (publicHost == null || publicHost.isBlank()) {
+            publicHost = "localhost";
         }
     }
 }

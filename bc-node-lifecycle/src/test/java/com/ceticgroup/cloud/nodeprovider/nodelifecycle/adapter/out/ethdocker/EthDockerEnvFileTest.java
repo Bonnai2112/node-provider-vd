@@ -340,6 +340,20 @@ class EthDockerEnvFileTest {
     }
 
     @Test
+    void render_should_setHostIp_to_allInterfaces_soPublishedPortsAreReachableExternally() {
+        Map<String, String> env =
+                EthDockerEnvFile.render(
+                        spec(Network.HOODI, ElClient.BESU, ClClient.TEKU),
+                        PORTS,
+                        PROJECT_NAME,
+                        DEFAULTS);
+
+        // The host-ports.yml override binds with ${HOST_IP:-127.0.0.1}; without this entry
+        // it would fall back to loopback and make the JSON-RPC URL unreachable from outside.
+        assertThat(env).containsEntry("HOST_IP", "0.0.0.0");
+    }
+
+    @Test
     void serialize_should_produceKeyEqualsValueLines() {
         Map<String, String> env =
                 EthDockerEnvFile.render(

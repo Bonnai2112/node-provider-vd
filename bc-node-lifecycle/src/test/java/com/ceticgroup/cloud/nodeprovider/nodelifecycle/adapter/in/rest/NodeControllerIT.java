@@ -25,6 +25,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GetNodeUse
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ListNodesByOwnerUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ProvisionNodeCommand;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ProvisionNodeUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.RestartNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.TerminateNodeUseCase;
 import java.net.URI;
 import java.util.List;
@@ -50,6 +51,8 @@ class NodeControllerIT {
     @MockitoBean private ListNodesByOwnerUseCase listNodesByOwnerUseCase;
 
     @MockitoBean private TerminateNodeUseCase terminateNodeUseCase;
+
+    @MockitoBean private RestartNodeUseCase restartNodeUseCase;
 
     @Test
     void post_should_return_202_with_location_header() throws Exception {
@@ -215,6 +218,33 @@ class NodeControllerIT {
                 .terminate(new NodeId(id), new OwnerId(ownerId));
 
         mockMvc.perform(delete("/api/v1/nodes/{id}", id).header("X-Owner-Id", ownerId.toString()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void restart_should_return_202_when_restartInvoked() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+
+        mockMvc.perform(
+                        post("/api/v1/nodes/{id}/restart", id)
+                                .header("X-Owner-Id", ownerId.toString()))
+                .andExpect(status().isAccepted());
+
+        then(restartNodeUseCase).should().restart(new NodeId(id), new OwnerId(ownerId));
+    }
+
+    @Test
+    void restart_should_return_404_when_nodeNotFound() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        willThrow(new NodeNotFoundException(new NodeId(id)))
+                .given(restartNodeUseCase)
+                .restart(new NodeId(id), new OwnerId(ownerId));
+
+        mockMvc.perform(
+                        post("/api/v1/nodes/{id}/restart", id)
+                                .header("X-Owner-Id", ownerId.toString()))
                 .andExpect(status().isNotFound());
     }
 

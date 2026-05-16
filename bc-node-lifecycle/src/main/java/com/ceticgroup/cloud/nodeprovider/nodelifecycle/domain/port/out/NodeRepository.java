@@ -15,6 +15,11 @@ public interface NodeRepository {
 
     List<Node> findByOwner(OwnerId owner);
 
+    /**
+     * Returns nodes the reconciler should observe. Excludes terminal states (TERMINATED, FAILED)
+     * and STOPPED — STOPPED is awaiting an explicit restart command, probing it would just thrash
+     * observations against down containers.
+     */
     List<Node> findNonTerminal();
 
     /**

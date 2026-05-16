@@ -18,6 +18,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GetNodeUse
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ListNodesByOwnerUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ProvisionNodeCommand;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ProvisionNodeUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.RestartNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.TerminateNodeUseCase;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -46,16 +47,19 @@ class NodeController {
     private final GetNodeUseCase getNodeUseCase;
     private final ListNodesByOwnerUseCase listNodesByOwnerUseCase;
     private final TerminateNodeUseCase terminateNodeUseCase;
+    private final RestartNodeUseCase restartNodeUseCase;
 
     NodeController(
             ProvisionNodeUseCase provisionNodeUseCase,
             GetNodeUseCase getNodeUseCase,
             ListNodesByOwnerUseCase listNodesByOwnerUseCase,
-            TerminateNodeUseCase terminateNodeUseCase) {
+            TerminateNodeUseCase terminateNodeUseCase,
+            RestartNodeUseCase restartNodeUseCase) {
         this.provisionNodeUseCase = provisionNodeUseCase;
         this.getNodeUseCase = getNodeUseCase;
         this.listNodesByOwnerUseCase = listNodesByOwnerUseCase;
         this.terminateNodeUseCase = terminateNodeUseCase;
+        this.restartNodeUseCase = restartNodeUseCase;
     }
 
     @PostMapping
@@ -118,6 +122,12 @@ class NodeController {
     ResponseEntity<Void> terminate(
             @RequestHeader(OWNER_HEADER) UUID ownerId, @PathVariable UUID id) {
         terminateNodeUseCase.terminate(new NodeId(id), new OwnerId(ownerId));
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/{id}/restart")
+    ResponseEntity<Void> restart(@RequestHeader(OWNER_HEADER) UUID ownerId, @PathVariable UUID id) {
+        restartNodeUseCase.restart(new NodeId(id), new OwnerId(ownerId));
         return ResponseEntity.accepted().build();
     }
 

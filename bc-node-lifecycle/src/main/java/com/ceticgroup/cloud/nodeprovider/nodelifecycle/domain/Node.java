@@ -111,6 +111,25 @@ public final class Node {
         status = new NodeStatus.Degraded(reason);
     }
 
+    public void markStopped(String reason) {
+        requireNonBlank(reason, "reason");
+        if (!(status instanceof NodeStatus.Provisioning)
+                && !(status instanceof NodeStatus.Syncing)
+                && !(status instanceof NodeStatus.Ready)
+                && !(status instanceof NodeStatus.Degraded)) {
+            throw IllegalNodeTransitionException.from(status, "markStopped");
+        }
+        status = new NodeStatus.Stopped(reason);
+    }
+
+    public void restart() {
+        if (!(status instanceof NodeStatus.Stopped)) {
+            throw IllegalNodeTransitionException.from(status, "restart");
+        }
+        status = new NodeStatus.Provisioning();
+        pendingEvents.add(new NodeProvisioningStarted(id, Instant.now()));
+    }
+
     public void terminate() {
         if (status instanceof NodeStatus.Terminating
                 || status instanceof NodeStatus.Terminated

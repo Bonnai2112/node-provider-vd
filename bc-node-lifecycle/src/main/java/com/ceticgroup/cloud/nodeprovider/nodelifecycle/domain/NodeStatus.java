@@ -8,6 +8,7 @@ public sealed interface NodeStatus
                 NodeStatus.Syncing,
                 NodeStatus.Ready,
                 NodeStatus.Degraded,
+                NodeStatus.Stopped,
                 NodeStatus.Terminating,
                 NodeStatus.Terminated,
                 NodeStatus.Failed {
@@ -26,6 +27,12 @@ public sealed interface NodeStatus
 
     record Degraded(String reason) implements NodeStatus {
         public Degraded {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    record Stopped(String reason) implements NodeStatus {
+        public Stopped {
             Objects.requireNonNull(reason, "reason");
         }
     }

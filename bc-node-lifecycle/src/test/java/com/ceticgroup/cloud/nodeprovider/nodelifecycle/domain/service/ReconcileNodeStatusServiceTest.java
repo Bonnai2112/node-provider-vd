@@ -102,43 +102,62 @@ class ReconcileNodeStatusServiceTest {
     }
 
     @Test
-    void reconcileAll_should_failNode_when_provisioningAndElCrashed() {
+    void reconcileAll_should_stopNode_when_provisioningAndElCrashedWithWorkdirIntact() {
         Node node = newNodeIn(new NodeStatus.Provisioning(), REF);
         stubProbes(
                 healthy(new LayerState.Crashed("oom"), new LayerState.Running()),
                 new ExecutionSyncStatus.NotSyncing(),
                 new ConsensusSyncStatus.NotSyncing(),
                 0);
+        when(orchestration.canRestart(REF)).thenReturn(true);
         when(repository.findNonTerminal()).thenReturn(List.of(node));
 
         service.reconcileAll();
 
         assertThat(node.status())
                 .isInstanceOfSatisfying(
-                        NodeStatus.Failed.class,
-                        f -> {
-                            assertThat(f.reason()).contains("EL=Crashed(oom)");
-                            assertThat(f.reason()).contains("CL=Running");
+                        NodeStatus.Stopped.class,
+                        s -> {
+                            assertThat(s.reason()).contains("EL=Crashed(oom)");
+                            assertThat(s.reason()).contains("CL=Running");
                         });
         verify(repository).save(node);
     }
 
     @Test
-    void reconcileAll_should_failNode_when_provisioningAndClCrashed() {
+    void reconcileAll_should_stopNode_when_provisioningAndClCrashedWithWorkdirIntact() {
         Node node = newNodeIn(new NodeStatus.Provisioning(), REF);
         stubProbes(
                 healthy(new LayerState.Running(), new LayerState.Crashed("panic")),
                 new ExecutionSyncStatus.NotSyncing(),
                 new ConsensusSyncStatus.NotSyncing(),
                 0);
+        when(orchestration.canRestart(REF)).thenReturn(true);
         when(repository.findNonTerminal()).thenReturn(List.of(node));
 
         service.reconcileAll();
 
         assertThat(node.status())
                 .isInstanceOfSatisfying(
-                        NodeStatus.Failed.class,
-                        f -> assertThat(f.reason()).contains("CL=Crashed(panic)"));
+                        NodeStatus.Stopped.class,
+                        s -> assertThat(s.reason()).contains("CL=Crashed(panic)"));
+    }
+
+    @Test
+    void reconcileAll_should_failNode_when_coreFaultAndWorkdirGone() {
+        Node node = newNodeIn(new NodeStatus.Provisioning(), REF);
+        stubProbes(
+                healthy(new LayerState.Crashed("oom"), new LayerState.Running()),
+                new ExecutionSyncStatus.NotSyncing(),
+                new ConsensusSyncStatus.NotSyncing(),
+                0);
+        when(orchestration.canRestart(REF)).thenReturn(false);
+        when(repository.findNonTerminal()).thenReturn(List.of(node));
+
+        service.reconcileAll();
+
+        // No workdir to restart from → terminal Failed, manual re-deploy required.
+        assertThat(node.status()).isInstanceOf(NodeStatus.Failed.class);
     }
 
     @Test
@@ -191,39 +210,44 @@ class ReconcileNodeStatusServiceTest {
     }
 
     @Test
-    void reconcileAll_should_failNode_when_syncingAndElCrashed() {
+    void reconcileAll_should_stopNode_when_syncingAndElCrashedWithWorkdirIntact() {
         Node node = newNodeIn(new NodeStatus.Syncing(), REF);
         stubProbes(
                 healthy(new LayerState.Crashed("EL panic"), new LayerState.Running()),
                 new ExecutionSyncStatus.Synced(),
                 new ConsensusSyncStatus.Synced(),
                 5);
+        when(orchestration.canRestart(REF)).thenReturn(true);
         when(repository.findNonTerminal()).thenReturn(List.of(node));
 
         service.reconcileAll();
 
         assertThat(node.status())
                 .isInstanceOfSatisfying(
-                        NodeStatus.Failed.class,
-                        f -> assertThat(f.reason()).contains("EL=Crashed(EL panic)"));
+                        NodeStatus.Stopped.class,
+                        s -> assertThat(s.reason()).contains("EL=Crashed(EL panic)"));
     }
 
     @Test
-    void reconcileAll_should_degrade_when_readyAndElCrashed() {
+    void reconcileAll_should_stopNode_when_readyAndElCrashedWithWorkdirIntact() {
+        // Was previously degraded; with the restart flow, a hard crash on Ready halts the node so
+        // the operator can either kick a restart or accept the failure. Transient states (Starting)
+        // still go through Degraded — see reconcileAll_should_degrade_when_readyAndClRestarting.
         Node node = newNodeIn(new NodeStatus.Ready(endpoint()), REF);
         stubProbes(
                 healthy(new LayerState.Crashed("disk"), new LayerState.Running()),
                 new ExecutionSyncStatus.Synced(),
                 new ConsensusSyncStatus.Synced(),
                 5);
+        when(orchestration.canRestart(REF)).thenReturn(true);
         when(repository.findNonTerminal()).thenReturn(List.of(node));
 
         service.reconcileAll();
 
         assertThat(node.status())
                 .isInstanceOfSatisfying(
-                        NodeStatus.Degraded.class,
-                        d -> assertThat(d.reason()).contains("EL=Crashed(disk)"));
+                        NodeStatus.Stopped.class,
+                        s -> assertThat(s.reason()).contains("EL=Crashed(disk)"));
     }
 
     @Test

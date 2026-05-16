@@ -97,7 +97,15 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
                         : previous.map(LastObservation::peers).orElse(OptionalInt.empty());
         node.observe(
                 new LastObservation(stickyElSync, stickyClSync, elBps, clSps, stickyPeers, now));
-        boolean changed = applyTransition(node, runtime, elSync, clSync, peers, elEndpoint);
+        boolean changed =
+                applyTransition(
+                        node,
+                        runtime,
+                        elSync,
+                        clSync,
+                        peers,
+                        elEndpoint,
+                        () -> orchestration.canRestart(ref));
         // We always persist so the observation is saved even when no transition fired.
         repository.save(node);
         if (changed) {
@@ -112,24 +120,29 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
             Optional<ExecutionSyncStatus> elSync,
             Optional<ConsensusSyncStatus> clSync,
             OptionalInt peers,
-            Optional<JsonRpcEndpoint> elEndpoint) {
+            Optional<JsonRpcEndpoint> elEndpoint,
+            java.util.function.BooleanSupplier canRestart) {
         return switch (node.status()) {
-            case NodeStatus.Provisioning _ -> reconcileFromProvisioning(node, runtime);
+            case NodeStatus.Provisioning _ -> reconcileFromProvisioning(node, runtime, canRestart);
             case NodeStatus.Syncing _ ->
-                    reconcileFromSyncing(node, runtime, elSync, clSync, peers, elEndpoint);
-            case NodeStatus.Ready _ -> reconcileFromReady(node, runtime, elSync, clSync, peers);
+                    reconcileFromSyncing(
+                            node, runtime, elSync, clSync, peers, elEndpoint, canRestart);
+            case NodeStatus.Ready _ ->
+                    reconcileFromReady(node, runtime, elSync, clSync, peers, canRestart);
             case NodeStatus.Degraded _ ->
-                    reconcileFromDegraded(node, runtime, elSync, clSync, peers, elEndpoint);
+                    reconcileFromDegraded(
+                            node, runtime, elSync, clSync, peers, elEndpoint, canRestart);
             default -> false;
         };
     }
 
-    private static boolean reconcileFromProvisioning(Node node, RuntimeStatus runtime) {
+    private static boolean reconcileFromProvisioning(
+            Node node, RuntimeStatus runtime, java.util.function.BooleanSupplier canRestart) {
         if (!(runtime instanceof RuntimeStatus.Healthy h)) {
             return false;
         }
         if (coreFault(h)) {
-            node.fail(RuntimeStatus.formatLayers(h.el(), h.cl(), h.validator()));
+            haltOrFail(node, h, canRestart);
             return true;
         }
         if (bothRunning(h)) {
@@ -145,12 +158,13 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
             Optional<ExecutionSyncStatus> elSync,
             Optional<ConsensusSyncStatus> clSync,
             OptionalInt peers,
-            Optional<JsonRpcEndpoint> elEndpoint) {
+            Optional<JsonRpcEndpoint> elEndpoint,
+            java.util.function.BooleanSupplier canRestart) {
         if (!(runtime instanceof RuntimeStatus.Healthy h)) {
             return false;
         }
         if (coreFault(h)) {
-            node.fail(RuntimeStatus.formatLayers(h.el(), h.cl(), h.validator()));
+            haltOrFail(node, h, canRestart);
             return true;
         }
         // Ready criterion is relaxed to EL synced + peers; CL sync and validator state are
@@ -168,11 +182,20 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
             RuntimeStatus runtime,
             Optional<ExecutionSyncStatus> elSync,
             Optional<ConsensusSyncStatus> clSync,
-            OptionalInt peers) {
+            OptionalInt peers,
+            java.util.function.BooleanSupplier canRestart) {
         if (!(runtime instanceof RuntimeStatus.Healthy h)) {
             return false;
         }
-        if (coreFault(h) || coreTransient(h)) {
+        if (coreFault(h)) {
+            // Containers exited or were removed: halt the node so the operator can decide whether
+            // to restart (workdir present) or accept the failure (workdir gone).
+            haltOrFail(node, h, canRestart);
+            return true;
+        }
+        if (coreTransient(h)) {
+            // Starting layers are transient by design — stay observable as Degraded, the next tick
+            // will catch the recovery.
             node.markDegraded(RuntimeStatus.formatLayers(h.el(), h.cl(), h.validator()));
             return true;
         }
@@ -193,15 +216,30 @@ public final class ReconcileNodeStatusService implements ReconcileNodeStatusUseC
             Optional<ExecutionSyncStatus> elSync,
             Optional<ConsensusSyncStatus> clSync,
             OptionalInt peers,
-            Optional<JsonRpcEndpoint> elEndpoint) {
+            Optional<JsonRpcEndpoint> elEndpoint,
+            java.util.function.BooleanSupplier canRestart) {
         if (!(runtime instanceof RuntimeStatus.Healthy h)) {
             return false;
+        }
+        if (coreFault(h)) {
+            haltOrFail(node, h, canRestart);
+            return true;
         }
         if (bothRunning(h) && isElSynced(elSync) && hasPeers(peers) && elEndpoint.isPresent()) {
             node.markReady(new Endpoint(elEndpoint.get().uri()));
             return true;
         }
         return false;
+    }
+
+    private static void haltOrFail(
+            Node node, RuntimeStatus.Healthy h, java.util.function.BooleanSupplier canRestart) {
+        String reason = RuntimeStatus.formatLayers(h.el(), h.cl(), h.validator());
+        if (canRestart.getAsBoolean()) {
+            node.markStopped(reason);
+        } else {
+            node.fail(reason);
+        }
     }
 
     private static boolean bothRunning(RuntimeStatus.Healthy h) {

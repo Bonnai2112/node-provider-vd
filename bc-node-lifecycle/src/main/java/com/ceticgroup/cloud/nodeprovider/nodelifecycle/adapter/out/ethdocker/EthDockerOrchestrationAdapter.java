@@ -11,6 +11,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
@@ -157,6 +158,27 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
                                         + properties.publicHost()
                                         + ":"
                                         + payload.ports().elRpcPort())));
+    }
+
+    @Override
+    public boolean canRestart(DeploymentRef ref) {
+        DeploymentPayload payload = deserialize(ref);
+        Path workdir = Paths.get(payload.workdir());
+        // The .env we wrote at deploy time is the marker of an alive workdir: present means
+        // `docker compose up` can pick it up, missing means the workdir was nuked and a
+        // fresh deploy is required.
+        return Files.isDirectory(workdir) && Files.isRegularFile(workdir.resolve(".env"));
+    }
+
+    @Override
+    public void restart(DeploymentRef ref) {
+        DeploymentPayload payload = deserialize(ref);
+        Path workdir = Paths.get(payload.workdir());
+        try {
+            shell.runEthdUp(workdir);
+        } catch (IOException e) {
+            throw new IllegalStateException("eth-docker restart failed", e);
+        }
     }
 
     @Override

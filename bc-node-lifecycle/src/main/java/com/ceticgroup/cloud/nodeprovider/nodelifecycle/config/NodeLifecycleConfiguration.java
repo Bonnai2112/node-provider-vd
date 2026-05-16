@@ -26,6 +26,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ListNodesB
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ListValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ProvisionNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ReconcileNodeStatusUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.RestartNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.TerminateNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.BlockchainProbePort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.CheckpointSyncSourceLocator;
@@ -45,6 +46,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ListNodesB
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ListValidatorKeysService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ProvisionNodeService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ReconcileNodeStatusService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.RestartNodeService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.TerminateNodeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.dockerjava.api.DockerClient;
@@ -108,6 +110,15 @@ public class NodeLifecycleConfiguration {
             DomainEventPublisher publisher,
             @Qualifier("nodeProvisionExecutor") Executor executor) {
         return new TerminateNodeService(repository, orchestration, publisher, executor);
+    }
+
+    @Bean
+    RestartNodeUseCase restartNodeUseCase(
+            NodeRepository repository,
+            NodeOrchestrationPort orchestration,
+            DomainEventPublisher publisher,
+            @Qualifier("nodeProvisionExecutor") Executor executor) {
+        return new RestartNodeService(repository, orchestration, publisher, executor);
     }
 
     @Bean

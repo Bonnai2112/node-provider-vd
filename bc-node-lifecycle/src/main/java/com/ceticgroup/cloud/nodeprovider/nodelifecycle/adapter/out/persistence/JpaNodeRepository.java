@@ -48,7 +48,7 @@ class JpaNodeRepository implements NodeRepository {
 
     @Override
     public List<Node> findNonTerminal() {
-        return jpa.findByStatusKindNotIn(List.of("TERMINATED", "FAILED")).stream()
+        return jpa.findByStatusKindNotIn(List.of("TERMINATED", "FAILED", "STOPPED")).stream()
                 .map(JpaNodeRepository::toDomain)
                 .toList();
     }
@@ -68,6 +68,7 @@ class JpaNodeRepository implements NodeRepository {
         String reason =
                 switch (status) {
                     case NodeStatus.Degraded d -> d.reason();
+                    case NodeStatus.Stopped s -> s.reason();
                     case NodeStatus.Failed f -> f.reason();
                     default -> null;
                 };
@@ -160,6 +161,7 @@ class JpaNodeRepository implements NodeRepository {
             case NodeStatus.Syncing _ -> "SYNCING";
             case NodeStatus.Ready _ -> "READY";
             case NodeStatus.Degraded _ -> "DEGRADED";
+            case NodeStatus.Stopped _ -> "STOPPED";
             case NodeStatus.Terminating _ -> "TERMINATING";
             case NodeStatus.Terminated _ -> "TERMINATED";
             case NodeStatus.Failed _ -> "FAILED";
@@ -173,6 +175,7 @@ class JpaNodeRepository implements NodeRepository {
             case "SYNCING" -> new NodeStatus.Syncing();
             case "READY" -> new NodeStatus.Ready(new Endpoint(URI.create(entity.getEndpointUri())));
             case "DEGRADED" -> new NodeStatus.Degraded(entity.getStatusReason());
+            case "STOPPED" -> new NodeStatus.Stopped(entity.getStatusReason());
             case "TERMINATING" -> new NodeStatus.Terminating();
             case "TERMINATED" -> new NodeStatus.Terminated();
             case "FAILED" -> new NodeStatus.Failed(entity.getStatusReason());

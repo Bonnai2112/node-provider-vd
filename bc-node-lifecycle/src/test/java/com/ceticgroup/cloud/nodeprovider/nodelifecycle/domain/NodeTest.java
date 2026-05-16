@@ -293,6 +293,180 @@ class NodeTest {
     }
 
     @Nested
+    class MarkStopped {
+
+        @Test
+        void markStopped_should_transitionFromProvisioningToStopped() {
+            Node node = nodeInProvisioning();
+
+            node.markStopped("containers exited");
+
+            assertThat(node.status())
+                    .isInstanceOfSatisfying(
+                            NodeStatus.Stopped.class,
+                            s -> assertThat(s.reason()).isEqualTo("containers exited"));
+        }
+
+        @Test
+        void markStopped_should_transitionFromSyncingToStopped() {
+            Node node = nodeInSyncing();
+
+            node.markStopped("containers exited");
+
+            assertThat(node.status()).isInstanceOf(NodeStatus.Stopped.class);
+        }
+
+        @Test
+        void markStopped_should_transitionFromReadyToStopped() {
+            Node node = nodeInReady();
+
+            node.markStopped("EL=Crashed(oom)");
+
+            assertThat(node.status()).isInstanceOf(NodeStatus.Stopped.class);
+        }
+
+        @Test
+        void markStopped_should_transitionFromDegradedToStopped() {
+            Node node = nodeInDegraded();
+
+            node.markStopped("EL=Crashed(oom)");
+
+            assertThat(node.status()).isInstanceOf(NodeStatus.Stopped.class);
+        }
+
+        @Test
+        void markStopped_should_notEmitEvent() {
+            Node node = nodeInReady();
+            node.pullEvents();
+
+            node.markStopped("oops");
+
+            assertThat(node.pullEvents()).isEmpty();
+        }
+
+        @Test
+        void markStopped_should_throw_when_inRequested() {
+            Node node = newRequestedNode();
+
+            assertThatThrownBy(() -> node.markStopped("any"))
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void markStopped_should_throw_when_alreadyStopped() {
+            Node node = nodeInStopped();
+
+            assertThatThrownBy(() -> node.markStopped("again"))
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void markStopped_should_throw_when_terminating() {
+            Node node = nodeInTerminating();
+
+            assertThatThrownBy(() -> node.markStopped("any"))
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void markStopped_should_throw_when_terminated() {
+            Node node = nodeInTerminated();
+
+            assertThatThrownBy(() -> node.markStopped("any"))
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void markStopped_should_throw_when_failed() {
+            Node node = nodeInFailed();
+
+            assertThatThrownBy(() -> node.markStopped("any"))
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void markStopped_should_throw_when_reasonIsBlank() {
+            Node node = nodeInReady();
+
+            assertThatThrownBy(() -> node.markStopped("  "))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void markStopped_should_throw_when_reasonIsNull() {
+            Node node = nodeInReady();
+
+            assertThatThrownBy(() -> node.markStopped(null))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Nested
+    class Restart {
+
+        @Test
+        void restart_should_transitionFromStoppedToProvisioning() {
+            Node node = nodeInStopped();
+
+            node.restart();
+
+            assertThat(node.status()).isInstanceOf(NodeStatus.Provisioning.class);
+        }
+
+        @Test
+        void restart_should_preserveDeploymentRef() {
+            Node node = nodeInStopped();
+            DeploymentRef refBefore = node.deploymentRef();
+
+            node.restart();
+
+            assertThat(node.deploymentRef()).isEqualTo(refBefore);
+        }
+
+        @Test
+        void restart_should_emitNodeProvisioningStarted() {
+            Node node = nodeInStopped();
+            node.pullEvents();
+
+            node.restart();
+
+            assertThat(node.pullEvents())
+                    .singleElement()
+                    .isInstanceOfSatisfying(
+                            NodeProvisioningStarted.class,
+                            evt -> assertThat(evt.nodeId()).isEqualTo(NODE_ID));
+        }
+
+        @Test
+        void restart_should_throw_when_inRequested() {
+            Node node = newRequestedNode();
+
+            assertThatThrownBy(node::restart).isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void restart_should_throw_when_inReady() {
+            Node node = nodeInReady();
+
+            assertThatThrownBy(node::restart).isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void restart_should_throw_when_failed() {
+            Node node = nodeInFailed();
+
+            assertThatThrownBy(node::restart).isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void restart_should_throw_when_terminated() {
+            Node node = nodeInTerminated();
+
+            assertThatThrownBy(node::restart).isInstanceOf(IllegalNodeTransitionException.class);
+        }
+    }
+
+    @Nested
     class Terminate {
 
         @Test
@@ -334,6 +508,15 @@ class NodeTest {
         @Test
         void terminate_should_transitionToTerminating_when_inDegraded() {
             Node node = nodeInDegraded();
+
+            node.terminate();
+
+            assertThat(node.status()).isInstanceOf(NodeStatus.Terminating.class);
+        }
+
+        @Test
+        void terminate_should_transitionToTerminating_when_inStopped() {
+            Node node = nodeInStopped();
 
             node.terminate();
 
@@ -440,6 +623,15 @@ class NodeTest {
             Node node = nodeInTerminating();
 
             node.fail("cleanup error");
+
+            assertThat(node.status()).isInstanceOf(NodeStatus.Failed.class);
+        }
+
+        @Test
+        void fail_should_transitionToFailed_when_inStopped() {
+            Node node = nodeInStopped();
+
+            node.fail("restart failed");
 
             assertThat(node.status()).isInstanceOf(NodeStatus.Failed.class);
         }
@@ -556,6 +748,12 @@ class NodeTest {
     private static Node nodeInFailed() {
         Node n = nodeInProvisioning();
         n.fail("test-failed");
+        return n;
+    }
+
+    private static Node nodeInStopped() {
+        Node n = nodeInReady();
+        n.markStopped("test-stopped");
         return n;
     }
 }

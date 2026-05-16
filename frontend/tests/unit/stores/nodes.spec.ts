@@ -36,6 +36,7 @@ function makeApi(overrides: Partial<NodesApi> = {}): NodesApi {
         get: vi.fn(),
         create: vi.fn(),
         terminate: vi.fn(),
+        restart: vi.fn(),
         listValidatorKeys: vi.fn(),
         generateValidatorKeys: vi.fn(),
         importValidatorKeys: vi.fn(),
@@ -156,6 +157,20 @@ describe('useNodesStore', () => {
 
         expect(store.get(node.id)?.status).toBe('TERMINATING');
         expect(api.terminate).toHaveBeenCalledWith(node.id);
+    });
+
+    it('restart_should_mark_existing_node_PROVISIONING_when_api_succeeds', async () => {
+        const node = makeNode({ status: 'STOPPED', reason: 'EL=Crashed(oom)' });
+        const api = makeApi({
+            restart: vi.fn().mockResolvedValue(undefined),
+        });
+        const store = useNodesStore();
+        store.upsert(node);
+
+        await store.restart(api, node.id);
+
+        expect(store.get(node.id)?.status).toBe('PROVISIONING');
+        expect(api.restart).toHaveBeenCalledWith(node.id);
     });
 
     it('fetchValidatorKeys_should_store_keys_for_node_when_api_returns', async () => {

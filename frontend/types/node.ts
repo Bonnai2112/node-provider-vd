@@ -13,6 +13,7 @@ export const NODE_STATUSES = [
     'SYNCING',
     'READY',
     'DEGRADED',
+    'STOPPED',
     'TERMINATING',
     'TERMINATED',
     'FAILED',
@@ -81,8 +82,12 @@ export interface NodeAcceptedResponse {
     status: NodeStatusKind;
 }
 
+// "Terminal" here means "no longer changes on its own" — used to stop background polling.
+// READY is included because it's the stable nominal state; STOPPED awaits an explicit restart
+// before it can move again, so polling it is also wasted work.
 export const TERMINAL_STATUSES: ReadonlySet<NodeStatusKind> = new Set([
     'READY',
+    'STOPPED',
     'TERMINATED',
     'FAILED',
 ]);

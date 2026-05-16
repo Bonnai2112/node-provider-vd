@@ -86,6 +86,26 @@ const canTerminate = computed(() => {
     return current.status !== 'TERMINATED' && current.status !== 'TERMINATING';
 });
 
+const restarting = ref(false);
+const restartError = ref<string | null>(null);
+
+async function onRestart() {
+    if (!node.value) return;
+    restarting.value = true;
+    restartError.value = null;
+    try {
+        await store.restart(api, id.value);
+        await store.fetchOne(api, id.value);
+        startPolling();
+    } catch (e) {
+        restartError.value = e instanceof Error ? e.message : 'Erreur';
+    } finally {
+        restarting.value = false;
+    }
+}
+
+const canRestart = computed(() => node.value?.status === 'STOPPED');
+
 function formatRelative(iso: string | null): string {
     if (!iso) return '—';
     const seconds = Math.max(
@@ -213,7 +233,17 @@ function formatRelative(iso: string | null): string {
 
                 <NodeOptionsPanel :options="node.options" />
 
-                <div class="flex items-center gap-3 border-t border-slate-200 pt-4">
+                <div class="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+                    <button
+                        v-if="canRestart"
+                        type="button"
+                        class="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                        :disabled="restarting"
+                        data-testid="restart-btn"
+                        @click="onRestart"
+                    >
+                        {{ restarting ? 'Relance…' : 'Relancer' }}
+                    </button>
                     <button
                         type="button"
                         class="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-400"
@@ -223,6 +253,13 @@ function formatRelative(iso: string | null): string {
                     >
                         {{ terminating ? 'En cours…' : 'Terminer' }}
                     </button>
+                    <p
+                        v-if="restartError"
+                        class="text-sm text-rose-700"
+                        role="alert"
+                    >
+                        {{ restartError }}
+                    </p>
                     <p
                         v-if="terminateError"
                         class="text-sm text-rose-700"

@@ -139,6 +139,16 @@ export const useNodesStore = defineStore('nodes', {
             }
         },
 
+        async restart(api: NodesApi, id: string) {
+            await api.restart(id);
+            const existing = this.byId[id];
+            if (existing) {
+                // Mirror what the backend will do: STOPPED → PROVISIONING. The reconciler will
+                // pick up SYNCING/READY transitions from there at the next poll tick.
+                this.byId[id] = { ...existing, status: 'PROVISIONING' };
+            }
+        },
+
         async fetchValidatorKeys(api: NodesApi, nodeId: string) {
             this.keysLoading = true;
             this.keysError = null;

@@ -12,6 +12,7 @@ export interface NodesApi {
     get(id: string): Promise<NodeView>;
     create(req: CreateNodeRequest): Promise<NodeAcceptedResponse>;
     terminate(id: string): Promise<void>;
+    restart(id: string): Promise<void>;
     listValidatorKeys(nodeId: string): Promise<ValidatorKey[]>;
     generateValidatorKeys(
         nodeId: string,
@@ -58,6 +59,12 @@ export function createNodesApi(fetcher: FetchLike, ownerId: string): NodesApi {
         terminate: (id) =>
             fetcher<void>(`/api/v1/nodes/${id}`, {
                 method: 'DELETE',
+                headers,
+            }),
+
+        restart: (id) =>
+            fetcher<void>(`/api/v1/nodes/${id}/restart`, {
+                method: 'POST',
                 headers,
             }),
 

@@ -9,6 +9,7 @@ const palette: Record<NodeStatusKind, string> = {
     SYNCING: 'bg-sky-100 text-sky-800 ring-sky-200',
     READY: 'bg-emerald-100 text-emerald-800 ring-emerald-200',
     DEGRADED: 'bg-orange-100 text-orange-800 ring-orange-200',
+    STOPPED: 'bg-yellow-100 text-yellow-800 ring-yellow-200',
     TERMINATING: 'bg-zinc-100 text-zinc-700 ring-zinc-200',
     TERMINATED: 'bg-zinc-200 text-zinc-700 ring-zinc-300',
     FAILED: 'bg-rose-100 text-rose-800 ring-rose-200',

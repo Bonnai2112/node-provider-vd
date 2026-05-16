@@ -96,6 +96,21 @@ describe('useNodesApi (createNodesApi)', () => {
         });
     });
 
+    it('restart_should_POST_restart_subresource_with_owner_header_when_called', async () => {
+        const fetcher = fakeFetcher(undefined);
+        const api = createNodesApi(fetcher, OWNER);
+
+        await api.restart(sampleNode.id);
+
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/restart`,
+            {
+                method: 'POST',
+                headers: { 'X-Owner-Id': OWNER },
+            },
+        );
+    });
+
     it('listValidatorKeys_should_GET_keys_with_owner_header_when_called', async () => {
         const fetcher = fakeFetcher([sampleKey]);
         const api = createNodesApi(fetcher, OWNER);

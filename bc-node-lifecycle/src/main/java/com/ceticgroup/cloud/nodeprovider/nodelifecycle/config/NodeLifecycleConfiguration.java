@@ -19,6 +19,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.Pro
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ProcessGitLsRemoteClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.RepositoryCheckpointSyncSourceLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.jsonrpc.HttpBlockchainProbeAdapter;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.keys.InMemoryKeyGenerationJobRegistry;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DisableMevBoostUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DisableValidatorUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DownloadValidatorKeysUseCase;
@@ -37,12 +38,14 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.Blockchai
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.CheckpointSyncSourceLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.DomainEventPublisher;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ElDatadirTemplateLocator;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.KeyGenerationJobRegistry;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeOrchestrationPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeRepository;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyArchiverPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyGeneratorPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyImporterPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyRepository;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.AsyncGenerateValidatorKeysService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.DisableMevBoostService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.DisableValidatorService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.DownloadValidatorKeysService;
@@ -202,6 +205,20 @@ public class NodeLifecycleConfiguration {
             ValidatorKeyGeneratorPort generator,
             ValidatorKeyImporterPort importer) {
         return new GenerateValidatorKeysService(nodes, keys, generator, importer);
+    }
+
+    @Bean(destroyMethod = "close")
+    KeyGenerationJobRegistry keyGenerationJobRegistry() {
+        return new InMemoryKeyGenerationJobRegistry();
+    }
+
+    // Single bean implementing both StartGenerate... and PollKeyGenerationJob... — Spring's
+    // by-type resolution finds it for either interface. Two separate @Bean methods would each
+    // be introspected by runtime class and create a NoUniqueBeanDefinition collision.
+    @Bean
+    AsyncGenerateValidatorKeysService asyncGenerateValidatorKeysService(
+            GenerateValidatorKeysUseCase synchronousGenerator, KeyGenerationJobRegistry registry) {
+        return new AsyncGenerateValidatorKeysService(synchronousGenerator, registry);
     }
 
     @Bean

@@ -5,6 +5,18 @@ Pour le détail d'un commit : `git show <sha>`.
 
 ---
 
+## 2026-05-17 (suite) — Génération de clés validator asynchrone (backend)
+
+- **feat(node-lifecycle)**: génération de clés validator en mode asynchrone
+  (202 + polling) — `POST /validator-keys/generate` renvoie désormais
+  `202 { jobId }` et un nouveau `GET /validator-keys/generate-jobs/{jobId}`
+  expose le statut (`RUNNING` / `SUCCEEDED` / `FAILED`). Le mnemonic et le
+  password ne sont jamais persistés : ils vivent uniquement dans
+  `InMemoryKeyGenerationJobRegistry` (ConcurrentHashMap + executor + TTL
+  30 min), sont effacés à la première lecture authentifiée du propriétaire
+  (one-shot), et un poll avec un owner différent renvoie 404 indistinctement
+  d'un id inconnu. **Changement d'API : tout consommateur doit s'adapter.**
+
 ## 2026-05-17 (suite) — Génération de clés validator : observabilité + déblocage
 
 - **perf(node-lifecycle)**: observabilité + pré-pull image deposit-cli +

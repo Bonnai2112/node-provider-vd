@@ -1,24 +1,30 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest;
 
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.GenerateValidatorKeysAcceptedResponse;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.GenerateValidatorKeysRequest;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.GenerateValidatorKeysResponse;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.KeyGenerationJobStatusResponse;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.ValidatorKeyResponse;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.KeyGenerationJobId;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.KeyGenerationJobState;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ValidatorKey;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DownloadValidatorKeysUseCase;
-import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateValidatorKeysUseCase.GenerateValidatorKeysCommand;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ImportValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ImportValidatorKeysUseCase.ImportValidatorKeysCommand;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ImportValidatorKeysUseCase.KeystoreUpload;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ListValidatorKeysUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.PollKeyGenerationJobUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.StartGenerateValidatorKeysUseCase;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,17 +44,20 @@ class ValidatorKeyController {
 
     private final ListValidatorKeysUseCase listUseCase;
     private final ImportValidatorKeysUseCase importUseCase;
-    private final GenerateValidatorKeysUseCase generateUseCase;
+    private final StartGenerateValidatorKeysUseCase startGenerateUseCase;
+    private final PollKeyGenerationJobUseCase pollJobUseCase;
     private final DownloadValidatorKeysUseCase downloadUseCase;
 
     ValidatorKeyController(
             ListValidatorKeysUseCase listUseCase,
             ImportValidatorKeysUseCase importUseCase,
-            GenerateValidatorKeysUseCase generateUseCase,
+            StartGenerateValidatorKeysUseCase startGenerateUseCase,
+            PollKeyGenerationJobUseCase pollJobUseCase,
             DownloadValidatorKeysUseCase downloadUseCase) {
         this.listUseCase = listUseCase;
         this.importUseCase = importUseCase;
-        this.generateUseCase = generateUseCase;
+        this.startGenerateUseCase = startGenerateUseCase;
+        this.pollJobUseCase = pollJobUseCase;
         this.downloadUseCase = downloadUseCase;
     }
 
@@ -126,7 +135,7 @@ class ValidatorKeyController {
     }
 
     @PostMapping("/generate")
-    GenerateValidatorKeysResponse generate(
+    ResponseEntity<GenerateValidatorKeysAcceptedResponse> generate(
             @RequestHeader(OWNER_HEADER) UUID ownerId,
             @PathVariable UUID id,
             @Valid @org.springframework.web.bind.annotation.RequestBody
@@ -137,11 +146,40 @@ class ValidatorKeyController {
                         new OwnerId(ownerId),
                         request.count(),
                         request.withdrawalAddress());
-        var result = generateUseCase.generate(command);
-        return new GenerateValidatorKeysResponse(
-                result.mnemonic(),
-                result.password(),
-                result.keys().stream().map(ValidatorKeyController::toResponse).toList());
+        KeyGenerationJobId jobId = startGenerateUseCase.start(command);
+        return ResponseEntity.accepted()
+                .body(new GenerateValidatorKeysAcceptedResponse(jobId.value()));
+    }
+
+    @GetMapping("/generate-jobs/{jobId}")
+    ResponseEntity<KeyGenerationJobStatusResponse> pollGenerateJob(
+            @RequestHeader(OWNER_HEADER) UUID ownerId,
+            @PathVariable UUID id,
+            @PathVariable UUID jobId) {
+        // {id} is part of the URL for symmetry with the rest of the resource hierarchy, but the
+        // registry alone is the source of truth for which job belongs to which owner; the node id
+        // is not cross-checked.
+        return pollJobUseCase
+                .poll(new KeyGenerationJobId(jobId), new OwnerId(ownerId))
+                .map(ValidatorKeyController::toJobStatusResponse)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).build());
+    }
+
+    private static KeyGenerationJobStatusResponse toJobStatusResponse(KeyGenerationJobState state) {
+        return switch (state) {
+            case KeyGenerationJobState.Running ignored -> KeyGenerationJobStatusResponse.running();
+            case KeyGenerationJobState.Succeeded s ->
+                    KeyGenerationJobStatusResponse.succeeded(
+                            new GenerateValidatorKeysResponse(
+                                    s.result().mnemonic(),
+                                    s.result().password(),
+                                    s.result().keys().stream()
+                                            .map(ValidatorKeyController::toResponse)
+                                            .toList()));
+            case KeyGenerationJobState.Failed f ->
+                    KeyGenerationJobStatusResponse.failed(f.message());
+        };
     }
 
     @PostMapping("/import")

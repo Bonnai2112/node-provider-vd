@@ -1,7 +1,8 @@
 import type {
     CreateNodeRequest,
+    GenerateValidatorKeysAcceptedResponse,
     GenerateValidatorKeysRequest,
-    GenerateValidatorKeysResponse,
+    KeyGenerationJobStatusResponse,
     NodeAcceptedResponse,
     NodeView,
     ValidatorKey,
@@ -28,10 +29,14 @@ export interface NodesApi {
     enableMevBoost(id: string, req: EnableMevBoostRequest): Promise<void>;
     disableMevBoost(id: string): Promise<void>;
     listValidatorKeys(nodeId: string): Promise<ValidatorKey[]>;
-    generateValidatorKeys(
+    startGenerateValidatorKeys(
         nodeId: string,
         req: GenerateValidatorKeysRequest,
-    ): Promise<GenerateValidatorKeysResponse>;
+    ): Promise<GenerateValidatorKeysAcceptedResponse>;
+    pollValidatorKeyGenerationJob(
+        nodeId: string,
+        jobId: string,
+    ): Promise<KeyGenerationJobStatusResponse>;
     importValidatorKeys(
         nodeId: string,
         keystores: File[],
@@ -114,13 +119,22 @@ export function createNodesApi(fetcher: FetchLike, ownerId: string): NodesApi {
                 headers,
             }),
 
-        generateValidatorKeys: (nodeId, req) =>
-            fetcher<GenerateValidatorKeysResponse>(
+        startGenerateValidatorKeys: (nodeId, req) =>
+            fetcher<GenerateValidatorKeysAcceptedResponse>(
                 `/api/v1/nodes/${nodeId}/validator-keys/generate`,
                 {
                     method: 'POST',
                     headers,
                     body: req,
+                },
+            ),
+
+        pollValidatorKeyGenerationJob: (nodeId, jobId) =>
+            fetcher<KeyGenerationJobStatusResponse>(
+                `/api/v1/nodes/${nodeId}/validator-keys/generate-jobs/${jobId}`,
+                {
+                    method: 'GET',
+                    headers,
                 },
             ),
 

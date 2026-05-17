@@ -71,13 +71,36 @@ function closeGenerate() {
     generateResult.value = null;
 }
 
+// Polling cadence: deposit-cli takes 5-15s for 1 key and scales linearly with count, so polling
+// every second keeps perceived latency low without flooding the backend. Cap retries at 6 min to
+// cover the worst case (100 keys, ~3-5s scrypt each).
+const POLL_INTERVAL_MS = 1000;
+const POLL_TIMEOUT_MS = 6 * 60 * 1000;
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function onGenerateSubmit(payload: { count: number; withdrawalAddress: string }) {
     generateSubmitting.value = true;
     generateError.value = null;
     try {
-        const result = await api.generateValidatorKeys(props.nodeId, payload);
-        generateResult.value = result;
-        store.appendValidatorKeys(props.nodeId, result.keys);
+        const { jobId } = await api.startGenerateValidatorKeys(props.nodeId, payload);
+        const deadline = Date.now() + POLL_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+            await delay(POLL_INTERVAL_MS);
+            const status = await api.pollValidatorKeyGenerationJob(props.nodeId, jobId);
+            if (status.status === 'SUCCEEDED' && status.result) {
+                generateResult.value = status.result;
+                store.appendValidatorKeys(props.nodeId, status.result.keys);
+                return;
+            }
+            if (status.status === 'FAILED') {
+                generateError.value = status.error ?? 'Erreur';
+                return;
+            }
+        }
+        generateError.value = 'Délai dépassé (génération toujours en cours côté serveur)';
     } catch (e) {
         generateError.value = e instanceof Error ? e.message : 'Erreur';
     } finally {

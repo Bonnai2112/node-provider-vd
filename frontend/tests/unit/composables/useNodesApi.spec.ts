@@ -188,21 +188,17 @@ describe('useNodesApi (createNodesApi)', () => {
         );
     });
 
-    it('generateValidatorKeys_should_POST_count_and_withdrawal_when_called', async () => {
-        const result = {
-            mnemonic: 'twelve words …',
-            password: 'secret',
-            keys: [sampleKey],
-        };
-        const fetcher = fakeFetcher(result);
+    it('startGenerateValidatorKeys_should_POST_count_and_withdrawal_when_called', async () => {
+        const accepted = { jobId: '44444444-4444-4444-4444-444444444444' };
+        const fetcher = fakeFetcher(accepted);
         const api = createNodesApi(fetcher, OWNER);
 
-        const out = await api.generateValidatorKeys(sampleNode.id, {
+        const out = await api.startGenerateValidatorKeys(sampleNode.id, {
             count: 2,
             withdrawalAddress: '0x' + 'a'.repeat(40),
         });
 
-        expect(out).toEqual(result);
+        expect(out).toEqual(accepted);
         expect(fetcher).toHaveBeenCalledWith(
             `/api/v1/nodes/${sampleNode.id}/validator-keys/generate`,
             {
@@ -210,6 +206,28 @@ describe('useNodesApi (createNodesApi)', () => {
                 headers: { 'X-Owner-Id': OWNER },
                 body: { count: 2, withdrawalAddress: '0x' + 'a'.repeat(40) },
             },
+        );
+    });
+
+    it('pollValidatorKeyGenerationJob_should_GET_status_when_called', async () => {
+        const status = {
+            status: 'SUCCEEDED' as const,
+            result: {
+                mnemonic: 'twelve words …',
+                password: 'secret',
+                keys: [sampleKey],
+            },
+        };
+        const fetcher = fakeFetcher(status);
+        const api = createNodesApi(fetcher, OWNER);
+        const jobId = '44444444-4444-4444-4444-444444444444';
+
+        const out = await api.pollValidatorKeyGenerationJob(sampleNode.id, jobId);
+
+        expect(out).toEqual(status);
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator-keys/generate-jobs/${jobId}`,
+            { method: 'GET', headers: { 'X-Owner-Id': OWNER } },
         );
     });
 

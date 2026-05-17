@@ -109,6 +109,18 @@ export interface GenerateValidatorKeysResponse {
     keys: ValidatorKey[];
 }
 
+export interface GenerateValidatorKeysAcceptedResponse {
+    jobId: string;
+}
+
+export type KeyGenerationJobStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+
+export interface KeyGenerationJobStatusResponse {
+    status: KeyGenerationJobStatus;
+    result?: GenerateValidatorKeysResponse;
+    error?: string;
+}
+
 export const DEFAULT_NODE_OPTIONS: NodeOptions = {
     validator: false,
     mevBoost: false,

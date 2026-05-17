@@ -5,6 +5,14 @@ Pour le détail d'un commit : `git show <sha>`.
 
 ---
 
+## 2026-05-17 (suite) — Polling frontend de la génération asynchrone
+
+- **feat(front)**: polling pour la génération asynchrone de clés validator —
+  le bouton « Générer » déclenche `startGenerateValidatorKeys` (202) puis
+  polle `pollValidatorKeyGenerationJob` toutes les secondes (timeout 6 min)
+  jusqu'à `SUCCEEDED` ou `FAILED`. UX inchangée (modale, secret affiché une
+  fois, ack avant fermeture).
+
 ## 2026-05-17 (suite) — Génération de clés validator asynchrone (backend)
 
 - **feat(node-lifecycle)**: génération de clés validator en mode asynchrone

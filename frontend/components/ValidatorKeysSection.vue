@@ -41,6 +41,11 @@ const copiedPubkey = ref<string | null>(null);
 const downloadingKeystore = ref<string | null>(null);
 const downloadingDeposit = ref<string | null>(null);
 
+const topupOpen = ref(false);
+const topupPubkey = ref<string | null>(null);
+const topupSubmitting = ref(false);
+const topupError = ref<string | null>(null);
+
 async function refreshKeys() {
     try {
         await store.fetchValidatorKeys(api, props.nodeId);
@@ -183,6 +188,44 @@ async function downloadDepositDataFor(pubkey: string) {
         rowError.value = e instanceof Error ? e.message : 'Erreur';
     } finally {
         downloadingDeposit.value = null;
+    }
+}
+
+function openTopup(pubkey: string) {
+    rowError.value = null;
+    topupError.value = null;
+    topupPubkey.value = pubkey;
+    topupOpen.value = true;
+}
+
+function closeTopup() {
+    topupOpen.value = false;
+    topupPubkey.value = null;
+    topupError.value = null;
+}
+
+async function onTopupSubmit(payload: {
+    amountEth: number;
+    keystorePassword: string;
+}) {
+    if (!topupPubkey.value) return;
+    topupSubmitting.value = true;
+    topupError.value = null;
+    try {
+        const blob = await api.generateTopupDepositData(
+            props.nodeId,
+            topupPubkey.value,
+            payload,
+        );
+        triggerBrowserDownload(
+            blob,
+            `topup_deposit_data-${pubkeyShort(topupPubkey.value)}.json`,
+        );
+        closeTopup();
+    } catch (e) {
+        topupError.value = e instanceof Error ? e.message : 'Erreur';
+    } finally {
+        topupSubmitting.value = false;
     }
 }
 </script>
@@ -352,6 +395,31 @@ async function downloadDepositDataFor(pubkey: string) {
                         </svg>
                     </button>
                 </Tooltip>
+                <Tooltip text="Générer un top-up deposit (augmenter le stake)">
+                    <button
+                        type="button"
+                        class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                        aria-label="Générer un top-up deposit pour cette clé"
+                        :data-testid="`topup-btn-${k.id}`"
+                        @click="openTopup(k.pubkey)"
+                    >
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.75"
+                            stroke="currentColor"
+                            class="h-4 w-4"
+                            aria-hidden="true"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M12 4.5v15m7.5-7.5h-15"
+                            />
+                        </svg>
+                    </button>
+                </Tooltip>
                 <Tooltip text="Télécharger deposit_data.json (cette clé)">
                     <button
                         type="button"
@@ -454,6 +522,15 @@ async function downloadDepositDataFor(pubkey: string) {
             :error="importError"
             @submit="onImportSubmit"
             @close="importOpen = false"
+        />
+
+        <TopupDepositModal
+            :open="topupOpen"
+            :pubkey="topupPubkey"
+            :submitting="topupSubmitting"
+            :error="topupError"
+            @submit="onTopupSubmit"
+            @close="closeTopup"
         />
     </section>
 </template>

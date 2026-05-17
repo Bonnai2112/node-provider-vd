@@ -327,4 +327,29 @@ describe('useNodesApi (createNodesApi)', () => {
             },
         );
     });
+
+    it('generateTopupDepositData_should_POST_topup_request_for_pubkey_when_called', async () => {
+        const blob = new Blob(['[{}]'], { type: 'application/json' });
+        const fetcher = fakeFetcher(blob);
+        const api = createNodesApi(fetcher, OWNER);
+        const pubkey = '0xfeedbeef';
+        const body = { amountEth: 32, keystorePassword: 'secret' };
+
+        const out = await api.generateTopupDepositData(
+            sampleNode.id,
+            pubkey,
+            body,
+        );
+
+        expect(out).toBe(blob);
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator-keys/${encodeURIComponent(pubkey)}/topup-deposit-data`,
+            {
+                method: 'POST',
+                headers: { 'X-Owner-Id': OWNER },
+                body,
+                responseType: 'blob',
+            },
+        );
+    });
 });

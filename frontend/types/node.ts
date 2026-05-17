@@ -121,6 +121,11 @@ export interface KeyGenerationJobStatusResponse {
     error?: string;
 }
 
+export interface GenerateTopupDepositRequest {
+    amountEth: number;
+    keystorePassword: string;
+}
+
 export const DEFAULT_NODE_OPTIONS: NodeOptions = {
     validator: false,
     mevBoost: false,

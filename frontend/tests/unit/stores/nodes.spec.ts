@@ -49,6 +49,7 @@ function makeApi(overrides: Partial<NodesApi> = {}): NodesApi {
         downloadDepositData: vi.fn(),
         downloadKeystoreFor: vi.fn(),
         downloadDepositDataFor: vi.fn(),
+        generateTopupDepositData: vi.fn(),
         ...overrides,
     };
 }

@@ -1,5 +1,6 @@
 import type {
     CreateNodeRequest,
+    GenerateTopupDepositRequest,
     GenerateValidatorKeysAcceptedResponse,
     GenerateValidatorKeysRequest,
     KeyGenerationJobStatusResponse,
@@ -46,6 +47,11 @@ export interface NodesApi {
     downloadDepositData(nodeId: string): Promise<Blob>;
     downloadKeystoreFor(nodeId: string, pubkey: string): Promise<Blob>;
     downloadDepositDataFor(nodeId: string, pubkey: string): Promise<Blob>;
+    generateTopupDepositData(
+        nodeId: string,
+        pubkey: string,
+        req: GenerateTopupDepositRequest,
+    ): Promise<Blob>;
 }
 
 export interface FetchLike {
@@ -182,6 +188,17 @@ export function createNodesApi(fetcher: FetchLike, ownerId: string): NodesApi {
                 {
                     method: 'GET',
                     headers,
+                    responseType: 'blob',
+                },
+            ),
+
+        generateTopupDepositData: (nodeId, pubkey, req) =>
+            fetcher<Blob>(
+                `/api/v1/nodes/${nodeId}/validator-keys/${encodeURIComponent(pubkey)}/topup-deposit-data`,
+                {
+                    method: 'POST',
+                    headers,
+                    body: req,
                     responseType: 'blob',
                 },
             ),

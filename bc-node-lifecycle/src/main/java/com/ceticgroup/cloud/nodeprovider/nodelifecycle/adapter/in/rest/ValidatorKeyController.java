@@ -1,5 +1,6 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest;
 
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.GenerateTopupDepositRequest;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.GenerateValidatorKeysAcceptedResponse;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.GenerateValidatorKeysRequest;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.GenerateValidatorKeysResponse;
@@ -11,6 +12,8 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ValidatorKey;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DownloadValidatorKeysUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateTopupDepositUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateTopupDepositUseCase.GenerateTopupDepositCommand;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateValidatorKeysUseCase.GenerateValidatorKeysCommand;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ImportValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ImportValidatorKeysUseCase.ImportValidatorKeysCommand;
@@ -47,18 +50,21 @@ class ValidatorKeyController {
     private final StartGenerateValidatorKeysUseCase startGenerateUseCase;
     private final PollKeyGenerationJobUseCase pollJobUseCase;
     private final DownloadValidatorKeysUseCase downloadUseCase;
+    private final GenerateTopupDepositUseCase topupUseCase;
 
     ValidatorKeyController(
             ListValidatorKeysUseCase listUseCase,
             ImportValidatorKeysUseCase importUseCase,
             StartGenerateValidatorKeysUseCase startGenerateUseCase,
             PollKeyGenerationJobUseCase pollJobUseCase,
-            DownloadValidatorKeysUseCase downloadUseCase) {
+            DownloadValidatorKeysUseCase downloadUseCase,
+            GenerateTopupDepositUseCase topupUseCase) {
         this.listUseCase = listUseCase;
         this.importUseCase = importUseCase;
         this.startGenerateUseCase = startGenerateUseCase;
         this.pollJobUseCase = pollJobUseCase;
         this.downloadUseCase = downloadUseCase;
+        this.topupUseCase = topupUseCase;
     }
 
     @GetMapping
@@ -120,6 +126,30 @@ class ValidatorKeyController {
                 downloadUseCase.downloadDepositDataFor(
                         new NodeId(id), new OwnerId(ownerId), pubkey);
         String filename = "deposit_data-" + shortPubkey(pubkey) + ".json";
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + filename + "\"")
+                .body(json);
+    }
+
+    @PostMapping("/{pubkey}/topup-deposit-data")
+    ResponseEntity<byte[]> topupDepositData(
+            @RequestHeader(OWNER_HEADER) UUID ownerId,
+            @PathVariable UUID id,
+            @PathVariable String pubkey,
+            @Valid @org.springframework.web.bind.annotation.RequestBody
+                    GenerateTopupDepositRequest request) {
+        byte[] json =
+                topupUseCase.generate(
+                        new GenerateTopupDepositCommand(
+                                new NodeId(id),
+                                new OwnerId(ownerId),
+                                pubkey,
+                                request.amountEth(),
+                                request.keystorePassword()));
+        String filename = "topup_deposit_data-" + shortPubkey(pubkey) + ".json";
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_JSON)
                 .header(

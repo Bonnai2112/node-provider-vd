@@ -3,6 +3,7 @@ package com.ceticgroup.cloud.nodeprovider.nodelifecycle.config;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ContainerInspector;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DepositCliImageWarmer;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DepositCliKeyGenerator;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DepositCliTopupGenerator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerJavaContainerInspector;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerJavaNetworkManager;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerNetworkManager;
@@ -25,6 +26,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DisableVal
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DownloadValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.EnableMevBoostUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.EnableValidatorUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateTopupDepositUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GetNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ImportValidatorKeysUseCase;
@@ -41,6 +43,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ElDatadir
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.KeyGenerationJobRegistry;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeOrchestrationPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.NodeRepository;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.TopupDepositGeneratorPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyArchiverPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyGeneratorPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyImporterPort;
@@ -51,6 +54,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.DisableVal
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.DownloadValidatorKeysService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.EnableMevBoostService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.EnableValidatorService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.GenerateTopupDepositService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.GenerateValidatorKeysService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.GetNodeService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ImportValidatorKeysService;
@@ -190,6 +194,18 @@ public class NodeLifecycleConfiguration {
     ValidatorKeyGeneratorPort validatorKeyGeneratorPort(
             ObjectMapper mapper, EthDockerProperties properties) {
         return new DepositCliKeyGenerator(mapper, properties.depositCliImage());
+    }
+
+    @Bean
+    TopupDepositGeneratorPort topupDepositGeneratorPort(
+            ObjectMapper mapper, EthDockerProperties properties) {
+        return new DepositCliTopupGenerator(mapper, properties.depositCliImage());
+    }
+
+    @Bean
+    GenerateTopupDepositUseCase generateTopupDepositUseCase(
+            NodeRepository nodes, TopupDepositGeneratorPort generator) {
+        return new GenerateTopupDepositService(nodes, generator);
     }
 
     @Bean

@@ -10,7 +10,7 @@
 # Remplacer par le CL_REST_HOST_PORT alloué pour ce node (deployment_ref.ports.clRestPort en DB).
 @clRestPort = 44161
 # Remplacer par une pubkey existante (sortie de POST /validator-keys/generate ou /import).
-@pubkey = 0xac0129c40770a284be9dd76fa7988ce15aebe622f3a49a624235579d7c5f1be18a8f1fa303a973197e006b1131fb2efd
+@pubkey = 0xb9fa1300aa8982e6a5bb52a4de458e5b6f07f5ff838750d0246338b6b8f619c447e6c2ee4a332e658d0cf2e37fc1502f
 # Predeploy EIP-7251 (CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS), identique sur toutes les chaines post-Pectra.
 @consolidationPredeploy = 0x0000BBdDc7CE488642fb579F8B00f3a590007251
 
@@ -414,3 +414,25 @@ Content-Type: application/json
 # bascule de 0x01… vers 0x02….
 GET http://localhost:{{clRestPort}}/eth/v1/beacon/states/head/pending_consolidations
 Accept: application/json
+
+###
+# ============================================================================
+# Top-up d'un validateur déjà actif (partial-deposit, EIP-7251 / Pectra)
+# Génère un deposit_data.json signé par le keystore existant ; l'opérateur
+# soumet ensuite la tx au contrat de dépôt (launchpad / cast / wallet).
+# Prérequis : validateur en 0x02 (compounding) credentials.
+# ============================================================================
+
+###
+# Scénario 32 — Générer un top-up de 32 ETH → 200 application/json (download)
+# Le password est celui retourné par /generate (ou fourni à /import).
+# Le withdrawal_address est extrait du deposit_data initial sur disque,
+# pas besoin de le repasser ici.
+POST {{host}}/api/v1/nodes/{{nodeId}}/validator-keys/{{pubkey}}/topup-deposit-data
+Content-Type: application/json
+X-Owner-Id: {{ownerId}}
+
+{
+  "amountEth": 32,
+  "keystorePassword": "REPLACE_WITH_KEYSTORE_PASSWORD"
+}

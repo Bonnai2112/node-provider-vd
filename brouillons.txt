@@ -60,3 +60,78 @@ cat /sys/class/dmi/id/sys_vendor
 # Voir qui écrit dans le conteneur execution
 docker exec node-17a2f1f7-execution-1 iotop -ao -n 3 -d 2 2>/dev/null || \
   pidstat -d 2 5
+
+
+# iostat : Pendant le snapshot 
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           7.20    0.00    3.46    3.15    6.21   79.98
+
+Device            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util
+loop0            0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+sda              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+sdb            488.50  61640.00     0.00   0.00    3.06   126.18   10.50     64.00     5.50  34.38   10.62     6.10    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    1.61  93.05
+sr0              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           6.11    0.00    3.20    3.51    5.37   81.82
+
+Device            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util
+loop0            0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+sda              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+sdb            474.50  59922.00     0.00   0.00    3.28   126.28    1.00     14.00     2.50  71.43   13.50    14.00    0.00      0.00     0.00   0.00    0.00     0.00    0.50    2.00    1.57  94.60
+sr0              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+
+
+# Log du service tarball 
+web3@web3-node-provider:/mnt/web3-node-provider-prod/workspace$ sudo journalctl -u produce-el-template@hoodi-geth.service -f
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]: time="2026-05-16T22:43:49Z" level=warning msg="The \"MEV_ALIAS\" variable is not set. Defaulting to a blank string."
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]: time="2026-05-16T22:43:49Z" level=warning msg="The \"EL_WS_PORT\" variable is not set. Defaulting to a blank string."
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]: time="2026-05-16T22:43:49Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]: time="2026-05-16T22:43:49Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]: time="2026-05-16T22:43:49Z" level=warning msg="The \"MEV_ALIAS\" variable is not set. Defaulting to a blank string."
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]: time="2026-05-16T22:43:49Z" level=warning msg="The \"EL_WS_PORT\" variable is not set. Defaulting to a blank string."
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]: time="2026-05-16T22:43:49Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]: time="2026-05-16T22:43:49Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]: time="2026-05-16T22:43:49Z" level=warning msg="The \"MEV_ALIAS\" variable is not set. Defaulting to a blank string."
+May 16 22:43:49 web3-node-provider produce-el-template.sh[159892]:  Container node-17a2f1f7-execution-1 Stopping
+May 16 22:44:15 web3-node-provider produce-el-template.sh[159892]:  Container node-17a2f1f7-execution-1 Stopped
+May 16 22:44:15 web3-node-provider produce-el-template.sh[159870]: [2026-05-16T22:44:15Z] building /var/lib/platform/templates/hoodi-geth.tar.zst via tar+zstd (level 3)
+May 16 23:14:29 web3-node-provider produce-el-template.sh[159870]: [2026-05-16T23:14:29Z] template ready: /var/lib/platform/templates/hoodi-geth.tar.zst (69G)
+May 16 23:14:29 web3-node-provider produce-el-template.sh[159870]: [2026-05-16T23:14:29Z] restarting execution container in /var/lib/platform/nodes/17a2f1f7-54e1-4460-8dc7-3d001165b034/eth-docker
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"EL_WS_PORT\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"MEV_ALIAS\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"EL_WS_PORT\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"MEV_ALIAS\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"EL_WS_PORT\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"CL_REST_PORT\" variable is not set. Defaulting to a blank string."
+May 16 23:14:29 web3-node-provider produce-el-template.sh[172023]: time="2026-05-16T23:14:29Z" level=warning msg="The \"MEV_ALIAS\" variable is not set. Defaulting to a blank string."
+May 16 23:14:30 web3-node-provider produce-el-template.sh[172023]:  Container node-17a2f1f7-execution-1 Starting
+May 16 23:14:31 web3-node-provider produce-el-template.sh[172023]:  Container node-17a2f1f7-execution-1 Started
+May 16 23:14:31 web3-node-provider systemd[1]: produce-el-template@hoodi-geth.service: Deactivated successfully.
+May 16 23:14:31 web3-node-provider systemd[1]: Finished produce-el-template@hoodi-geth.service - Build EL datadir template tarball for hoodi-geth.
+May 16 23:14:31 web3-node-provider systemd[1]: produce-el-template@hoodi-geth.service: Consumed 44min 26.957s CPU time, 5.3G memory peak.
+
+# Storage : Node geth&lighthouse hoodi ref up + template done 
+web3@web3-node-provider:/mnt/web3-node-provider-prod/workspace$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           1.6G  1.5M  1.6G   1% /run
+/dev/sda1        28G  3.7G   25G  14% /
+tmpfs           7.9G     0  7.9G   0% /dev/shm
+tmpfs           5.0M     0  5.0M   0% /run/lock
+tmpfs           7.9G   20M  7.8G   1% /tmp
+tmpfs           1.0M     0  1.0M   0% /run/credentials/systemd-journald.service
+tmpfs           1.0M     0  1.0M   0% /run/credentials/systemd-resolved.service
+/dev/sda13      989M   70M  852M   8% /boot
+/dev/sda15      105M  6.1M   99M   6% /boot/efi
+tmpfs           1.0M     0  1.0M   0% /run/credentials/systemd-networkd.service
+tmpfs           1.0M     0  1.0M   0% /run/credentials/getty@tty1.service
+tmpfs           1.0M     0  1.0M   0% /run/credentials/serial-getty@ttyS0.service
+tmpfs           1.6G   12K  1.6G   1% /run/user/0
+tmpfs           1.6G   12K  1.6G   1% /run/user/1002
+/dev/sdb        246G  181G   52G  78% /mnt/web3-node-provider-prod

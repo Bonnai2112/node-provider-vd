@@ -57,4 +57,7 @@ Plateforme de démo permettant de provisionner des nœuds Ethereum testnet
 - Tu n'introduis pas de nouvelle dépendance sans me demander.
 - Si une décision d'architecture émerge en cours de route, tu t'arrêtes
   et tu me poses la question. Tu ne décides pas seul.
-- Tu signales explicitement quand tu touches à plus d'un module.
+- Tu signales explicitement quand tu touches à plus d'un module
+- Chaque modification doit être réalisée sur une branche differente tiré du main et mergé au moment du commit 
+- Alimenter le fichier CHANGELOG.LOG au moment du commit
+

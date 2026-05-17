@@ -41,7 +41,8 @@ class EthDockerOrchestrationAdapterTest {
                     "/tmp/platform/cache",
                     "/tmp/platform/cache/sha",
                     "/tmp/platform/templates",
-                    "localhost");
+                    "localhost",
+                    null);
 
     @Mock private PortAllocator portAllocator;
     @Mock private EthDockerRefResolver refResolver;
@@ -348,7 +349,8 @@ class EthDockerOrchestrationAdapterTest {
                         "/tmp/platform/cache",
                         "/tmp/platform/cache/sha",
                         "/tmp/platform/templates",
-                        "203.0.113.42");
+                        "203.0.113.42",
+                        null);
         EthDockerOrchestrationAdapter adapterWithIp =
                 new EthDockerOrchestrationAdapter(
                         propsWithIp,
@@ -388,7 +390,8 @@ class EthDockerOrchestrationAdapterTest {
                         "/tmp/platform/cache",
                         "/tmp/platform/cache/sha",
                         "/tmp/platform/templates",
-                        "203.0.113.42");
+                        "203.0.113.42",
+                        null);
         EthDockerOrchestrationAdapter adapterWithIp =
                 new EthDockerOrchestrationAdapter(
                         propsWithIp,
@@ -426,7 +429,8 @@ class EthDockerOrchestrationAdapterTest {
                         "/tmp/platform/cache",
                         "/tmp/platform/cache/sha",
                         "/tmp/platform/templates",
-                        "203.0.113.42");
+                        "203.0.113.42",
+                        null);
         EthDockerOrchestrationAdapter adapterWithIp =
                 new EthDockerOrchestrationAdapter(
                         propsWithIp,

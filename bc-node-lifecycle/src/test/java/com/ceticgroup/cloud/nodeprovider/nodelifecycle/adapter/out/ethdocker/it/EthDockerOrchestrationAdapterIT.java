@@ -50,7 +50,8 @@ class EthDockerOrchestrationAdapterIT {
                         tmp.resolve("cache").toString(),
                         tmp.resolve("cache/sha").toString(),
                         tmp.resolve("templates").toString(),
-                        "localhost");
+                        "localhost",
+                        null);
 
         DockerClient docker = newDockerClient();
         ContainerInspector inspector = new DockerJavaContainerInspector(docker);

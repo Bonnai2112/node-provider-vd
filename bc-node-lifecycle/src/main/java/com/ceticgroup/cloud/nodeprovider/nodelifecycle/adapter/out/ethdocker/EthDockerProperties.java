@@ -10,7 +10,8 @@ public record EthDockerProperties(
         String cacheDir,
         String shaCacheFile,
         String templatesDir,
-        String publicHost) {
+        String publicHost,
+        String depositCliImage) {
 
     public EthDockerProperties {
         if (repoUrl == null || repoUrl.isBlank()) {
@@ -36,6 +37,11 @@ public record EthDockerProperties(
         // operators set the VM public IP via the PLATFORM_PUBLIC_HOST env var.
         if (publicHost == null || publicHost.isBlank()) {
             publicHost = "localhost";
+        }
+        // Pinned to avoid silent upgrades and to let us pre-pull at startup. Bump after
+        // validating a new release against the keystore/import flow.
+        if (depositCliImage == null || depositCliImage.isBlank()) {
+            depositCliImage = "ghcr.io/ethstaker/ethstaker-deposit-cli:v1.3.0";
         }
     }
 }

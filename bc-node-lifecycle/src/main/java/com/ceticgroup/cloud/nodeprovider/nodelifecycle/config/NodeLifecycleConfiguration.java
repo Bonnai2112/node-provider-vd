@@ -1,6 +1,7 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.config;
 
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ContainerInspector;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DepositCliImageWarmer;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DepositCliKeyGenerator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerJavaContainerInspector;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.DockerJavaNetworkManager;
@@ -183,8 +184,15 @@ public class NodeLifecycleConfiguration {
     }
 
     @Bean
-    ValidatorKeyGeneratorPort validatorKeyGeneratorPort(ObjectMapper mapper) {
-        return new DepositCliKeyGenerator(mapper);
+    ValidatorKeyGeneratorPort validatorKeyGeneratorPort(
+            ObjectMapper mapper, EthDockerProperties properties) {
+        return new DepositCliKeyGenerator(mapper, properties.depositCliImage());
+    }
+
+    @Bean
+    DepositCliImageWarmer depositCliImageWarmer(
+            DockerClient dockerClient, EthDockerProperties properties) {
+        return new DepositCliImageWarmer(dockerClient, properties.depositCliImage());
     }
 
     @Bean

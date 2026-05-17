@@ -5,6 +5,16 @@ Pour le détail d'un commit : `git show <sha>`.
 
 ---
 
+## 2026-05-17 (suite) — Génération de clés validator : observabilité + déblocage
+
+- **perf(node-lifecycle)**: observabilité + pré-pull image deposit-cli +
+  cache UID/GID + déblocage v1.3.0 — log SLF4J avant/après `docker run` avec
+  durée, image épinglée à `v1.3.0` (surchargeable via `DEPOSIT_CLI_IMAGE`),
+  pré-pull asynchrone au démarrage (`DepositCliImageWarmer`), UID/GID host
+  résolu une seule fois, `--amount=32` ajouté à `deposit-cli` pour skipper
+  le nouveau prompt interactif introduit par v1.3.0 sur les validators
+  compounding.
+
 ## 2026-05-17 (suite) — Outillage et règles
 
 - `9d556f9` **chore**: scénarios JSON-RPC consolidation EIP-7251 et CL REST —

@@ -20,19 +20,26 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DepositCliKeyGenerator implements ValidatorKeyGeneratorPort {
 
-    private static final String IMAGE = "ghcr.io/ethstaker/ethstaker-deposit-cli:latest";
+    private static final Logger log = LoggerFactory.getLogger(DepositCliKeyGenerator.class);
     private static final String CONTAINER_DATA_DIR = "/app/data";
     private static final String ETH_REL = ".eth";
     private static final String VALIDATOR_KEYS_REL = ".eth/validator_keys";
     private static final long PROCESS_TIMEOUT_SECONDS = 300;
 
     private final ObjectMapper mapper;
+    private final String image;
+    // Resolved once via `id -u`/`id -g`; reused for every generation. Volatile so a
+    // concurrent caller observes the fully-initialized value.
+    private volatile String cachedUidGid;
 
-    public DepositCliKeyGenerator(ObjectMapper mapper) {
+    public DepositCliKeyGenerator(ObjectMapper mapper, String image) {
         this.mapper = Objects.requireNonNull(mapper, "mapper");
+        this.image = Objects.requireNonNull(image, "image");
     }
 
     @Override
@@ -99,7 +106,7 @@ public class DepositCliKeyGenerator implements ValidatorKeyGeneratorPort {
                         uidGid,
                         "-v",
                         mountSource.toAbsolutePath() + ":" + CONTAINER_DATA_DIR,
-                        IMAGE,
+                        image,
                         "--language=english",
                         "--non_interactive",
                         "new-mnemonic",
@@ -108,19 +115,30 @@ public class DepositCliKeyGenerator implements ValidatorKeyGeneratorPort {
                         "--execution_address=" + withdrawalAddress,
                         "--keystore_password=" + password,
                         "--mnemonic_language=english",
+                        "--compounding",
+                        // Since v1.3.0 the --compounding flag triggers an interactive `amount`
+                        // prompt that --non_interactive does not skip; we always deposit the
+                        // activation default (32 ETH), so pass it explicitly to avoid blocking.
+                        "--amount=32",
                         "--folder",
                         CONTAINER_DATA_DIR);
         pb.redirectErrorStream(true);
+        log.info(
+                "starting deposit-cli (image={}, count={}, chain={}); container boot + scrypt"
+                        + " typically take 5-15s before the first keystore appears",
+                image,
+                count,
+                chain);
+        long startedAt = System.currentTimeMillis();
         Process p = pb.start();
         OutputStream stdin = p.getOutputStream();
 
         StringBuilder out = new StringBuilder();
         AtomicReference<String> capturedMnemonic = new AtomicReference<>();
-        // ethstaker-deposit-cli still emits two prompts that --non_interactive does not
-        // skip: a Pectra "compounding 0x02 credentials" yes/no (default: no) and a mnemonic
-        // confirmation that asks the operator to retype the 24 words. We pre-feed a newline
-        // for the first prompt, then echo back the mnemonic captured from stdout when the
-        // confirmation prompt is detected.
+        // 0x02 (compounding) credentials are selected via the --compounding flag, so the
+        // Pectra yes/no prompt no longer fires. The mnemonic confirmation prompt is still
+        // emitted (--non_interactive does not skip it), so we echo back the mnemonic
+        // captured from stdout when that prompt appears.
         Thread reader =
                 new Thread(
                         () -> {
@@ -156,13 +174,6 @@ public class DepositCliKeyGenerator implements ValidatorKeyGeneratorPort {
                         "deposit-cli-stdout");
         reader.setDaemon(true);
         reader.start();
-        try {
-            // Accept the leading "compounding [no]" prompt with an empty newline.
-            stdin.write("\n".getBytes(StandardCharsets.UTF_8));
-            stdin.flush();
-        } catch (IOException ignored) {
-            // process probably exited; the reader thread will surface the error
-        }
 
         if (!p.waitFor(PROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             p.destroyForcibly();
@@ -177,21 +188,33 @@ public class DepositCliKeyGenerator implements ValidatorKeyGeneratorPort {
         if (p.exitValue() != 0) {
             throw new IOException("deposit-cli exited " + p.exitValue() + ", output:\n" + out);
         }
+        log.info(
+                "deposit-cli finished in {} ms ({} keystore(s))",
+                System.currentTimeMillis() - startedAt,
+                count);
         return out.toString();
     }
 
-    private static String currentUidGid() {
+    private String currentUidGid() {
+        String cached = cachedUidGid;
+        if (cached != null) {
+            return cached;
+        }
         // On Linux/macOS we can read the real UID/GID via the JNR-less approach: a quick
         // `id -u` / `id -g` shell call. Falling back to "0:0" (root) is acceptable on Docker
-        // Desktop where rootless mounts handle ownership transparently.
+        // Desktop where rootless mounts handle ownership transparently. Result is stable
+        // for the JVM's lifetime so we resolve it once and reuse it.
+        String resolved;
         try {
             String uid = readSingleLine("id", "-u");
             String gid = readSingleLine("id", "-g");
-            return uid + ":" + gid;
+            resolved = uid + ":" + gid;
         } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
-            return "0:0";
+            resolved = "0:0";
         }
+        cachedUidGid = resolved;
+        return resolved;
     }
 
     private static String readSingleLine(String... command)

@@ -111,6 +111,70 @@ describe('useNodesApi (createNodesApi)', () => {
         );
     });
 
+    it('enableValidator_should_POST_validator_enable_with_body_when_called', async () => {
+        const fetcher = fakeFetcher(undefined);
+        const api = createNodesApi(fetcher, OWNER);
+        const body = { feeRecipient: '0x' + '1'.repeat(40), graffiti: 'g' };
+
+        await api.enableValidator(sampleNode.id, body);
+
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator/enable`,
+            {
+                method: 'POST',
+                headers: { 'X-Owner-Id': OWNER },
+                body,
+            },
+        );
+    });
+
+    it('disableValidator_should_POST_validator_disable_with_owner_header_when_called', async () => {
+        const fetcher = fakeFetcher(undefined);
+        const api = createNodesApi(fetcher, OWNER);
+
+        await api.disableValidator(sampleNode.id);
+
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/validator/disable`,
+            {
+                method: 'POST',
+                headers: { 'X-Owner-Id': OWNER },
+            },
+        );
+    });
+
+    it('enableMevBoost_should_POST_mev_boost_enable_with_body_when_called', async () => {
+        const fetcher = fakeFetcher(undefined);
+        const api = createNodesApi(fetcher, OWNER);
+        const body = { mevMinBid: '0.1', mevBuildFactor: 80 };
+
+        await api.enableMevBoost(sampleNode.id, body);
+
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/mev-boost/enable`,
+            {
+                method: 'POST',
+                headers: { 'X-Owner-Id': OWNER },
+                body,
+            },
+        );
+    });
+
+    it('disableMevBoost_should_POST_mev_boost_disable_with_owner_header_when_called', async () => {
+        const fetcher = fakeFetcher(undefined);
+        const api = createNodesApi(fetcher, OWNER);
+
+        await api.disableMevBoost(sampleNode.id);
+
+        expect(fetcher).toHaveBeenCalledWith(
+            `/api/v1/nodes/${sampleNode.id}/mev-boost/disable`,
+            {
+                method: 'POST',
+                headers: { 'X-Owner-Id': OWNER },
+            },
+        );
+    });
+
     it('listValidatorKeys_should_GET_keys_with_owner_header_when_called', async () => {
         const fetcher = fakeFetcher([sampleKey]);
         const api = createNodesApi(fetcher, OWNER);

@@ -5,7 +5,11 @@ import type {
     ValidatorKey,
 } from '~/types/node';
 import { DEFAULT_NODE_OPTIONS } from '~/types/node';
-import type { NodesApi } from '~/composables/useNodesApi';
+import type {
+    EnableMevBoostRequest,
+    EnableValidatorRequest,
+    NodesApi,
+} from '~/composables/useNodesApi';
 
 interface State {
     byId: Record<string, NodeView>;
@@ -146,6 +150,68 @@ export const useNodesStore = defineStore('nodes', {
                 // Mirror what the backend will do: STOPPED → PROVISIONING. The reconciler will
                 // pick up SYNCING/READY transitions from there at the next poll tick.
                 this.byId[id] = { ...existing, status: 'PROVISIONING' };
+            }
+        },
+
+        async enableValidator(
+            api: NodesApi,
+            id: string,
+            req: EnableValidatorRequest,
+        ) {
+            await api.enableValidator(id, req);
+            const existing = this.byId[id];
+            if (existing) {
+                this.byId[id] = {
+                    ...existing,
+                    options: {
+                        ...existing.options,
+                        validator: true,
+                        feeRecipient: req.feeRecipient,
+                        graffiti: req.graffiti,
+                    },
+                };
+            }
+        },
+
+        async disableValidator(api: NodesApi, id: string) {
+            await api.disableValidator(id);
+            const existing = this.byId[id];
+            if (existing) {
+                this.byId[id] = {
+                    ...existing,
+                    options: { ...existing.options, validator: false },
+                };
+            }
+        },
+
+        async enableMevBoost(
+            api: NodesApi,
+            id: string,
+            req: EnableMevBoostRequest,
+        ) {
+            await api.enableMevBoost(id, req);
+            const existing = this.byId[id];
+            if (existing) {
+                this.byId[id] = {
+                    ...existing,
+                    options: {
+                        ...existing.options,
+                        mevBoost: true,
+                        mevMinBid: req.mevMinBid,
+                        mevBuildFactor: req.mevBuildFactor,
+                    },
+                };
+            }
+        },
+
+        async disableMevBoost(api: NodesApi, id: string) {
+            await api.disableMevBoost(id);
+            const existing = this.byId[id];
+            if (existing) {
+                this.byId[id] = {
+                    ...existing,
+                    options: { ...existing.options, mevBoost: false },
+                };
             }
         },
 

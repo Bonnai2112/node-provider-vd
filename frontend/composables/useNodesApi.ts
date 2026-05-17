@@ -7,12 +7,26 @@ import type {
     ValidatorKey,
 } from '~/types/node';
 
+export interface EnableValidatorRequest {
+    feeRecipient: string;
+    graffiti: string | null;
+}
+
+export interface EnableMevBoostRequest {
+    mevMinBid: string;
+    mevBuildFactor: number;
+}
+
 export interface NodesApi {
     list(): Promise<NodeView[]>;
     get(id: string): Promise<NodeView>;
     create(req: CreateNodeRequest): Promise<NodeAcceptedResponse>;
     terminate(id: string): Promise<void>;
     restart(id: string): Promise<void>;
+    enableValidator(id: string, req: EnableValidatorRequest): Promise<void>;
+    disableValidator(id: string): Promise<void>;
+    enableMevBoost(id: string, req: EnableMevBoostRequest): Promise<void>;
+    disableMevBoost(id: string): Promise<void>;
     listValidatorKeys(nodeId: string): Promise<ValidatorKey[]>;
     generateValidatorKeys(
         nodeId: string,
@@ -64,6 +78,32 @@ export function createNodesApi(fetcher: FetchLike, ownerId: string): NodesApi {
 
         restart: (id) =>
             fetcher<void>(`/api/v1/nodes/${id}/restart`, {
+                method: 'POST',
+                headers,
+            }),
+
+        enableValidator: (id, req) =>
+            fetcher<void>(`/api/v1/nodes/${id}/validator/enable`, {
+                method: 'POST',
+                headers,
+                body: req,
+            }),
+
+        disableValidator: (id) =>
+            fetcher<void>(`/api/v1/nodes/${id}/validator/disable`, {
+                method: 'POST',
+                headers,
+            }),
+
+        enableMevBoost: (id, req) =>
+            fetcher<void>(`/api/v1/nodes/${id}/mev-boost/enable`, {
+                method: 'POST',
+                headers,
+                body: req,
+            }),
+
+        disableMevBoost: (id) =>
+            fetcher<void>(`/api/v1/nodes/${id}/mev-boost/disable`, {
                 method: 'POST',
                 headers,
             }),

@@ -106,6 +106,119 @@ async function onRestart() {
 
 const canRestart = computed(() => node.value?.status === 'STOPPED');
 
+const reconfigureError = ref<string | null>(null);
+const submittingReconfig = ref(false);
+
+const canReconfigure = computed(() => node.value?.status === 'READY');
+
+const canEnableValidator = computed(
+    () => canReconfigure.value && !node.value!.options.validator,
+);
+
+const canDisableValidator = computed(
+    () =>
+        canReconfigure.value &&
+        node.value!.options.validator &&
+        !node.value!.options.mevBoost,
+);
+
+const canEnableMevBoost = computed(
+    () =>
+        canReconfigure.value &&
+        node.value!.options.validator &&
+        !node.value!.options.mevBoost,
+);
+
+const canDisableMevBoost = computed(
+    () => canReconfigure.value && node.value!.options.mevBoost,
+);
+
+const enableValidatorOpen = ref(false);
+const enableMevBoostOpen = ref(false);
+
+function extractErrorMessage(e: unknown): string {
+    // $fetch wraps problem+json bodies under `data.detail` — surface it so users see the
+    // domain reason (e.g. "MEV-Boost requires validator…") instead of "500 Internal".
+    if (
+        e &&
+        typeof e === 'object' &&
+        'data' in e &&
+        (e as { data?: { detail?: unknown } }).data &&
+        typeof (e as { data: { detail?: unknown } }).data.detail === 'string'
+    ) {
+        return (e as { data: { detail: string } }).data.detail;
+    }
+    return e instanceof Error ? e.message : 'Erreur';
+}
+
+async function onEnableValidator(payload: {
+    feeRecipient: string;
+    graffiti: string | null;
+}) {
+    if (!node.value) return;
+    submittingReconfig.value = true;
+    reconfigureError.value = null;
+    try {
+        await store.enableValidator(api, id.value, payload);
+        enableValidatorOpen.value = false;
+        await store.fetchOne(api, id.value);
+    } catch (e) {
+        reconfigureError.value = extractErrorMessage(e);
+    } finally {
+        submittingReconfig.value = false;
+    }
+}
+
+async function onDisableValidator() {
+    if (!node.value) return;
+    if (!confirm('Désactiver le validateur ? Le service validator sera arrêté.'))
+        return;
+    submittingReconfig.value = true;
+    reconfigureError.value = null;
+    try {
+        await store.disableValidator(api, id.value);
+        await store.fetchOne(api, id.value);
+    } catch (e) {
+        reconfigureError.value = extractErrorMessage(e);
+    } finally {
+        submittingReconfig.value = false;
+    }
+}
+
+async function onEnableMevBoost(payload: {
+    mevMinBid: string;
+    mevBuildFactor: number;
+}) {
+    if (!node.value) return;
+    submittingReconfig.value = true;
+    reconfigureError.value = null;
+    try {
+        await store.enableMevBoost(api, id.value, payload);
+        enableMevBoostOpen.value = false;
+        await store.fetchOne(api, id.value);
+    } catch (e) {
+        reconfigureError.value = extractErrorMessage(e);
+    } finally {
+        submittingReconfig.value = false;
+    }
+}
+
+async function onDisableMevBoost() {
+    if (!node.value) return;
+    if (!confirm('Désactiver MEV-Boost ? Le service mev-boost sera arrêté.'))
+        return;
+    submittingReconfig.value = true;
+    reconfigureError.value = null;
+    try {
+        await store.disableMevBoost(api, id.value);
+        await store.fetchOne(api, id.value);
+    } catch (e) {
+        reconfigureError.value = extractErrorMessage(e);
+    } finally {
+        submittingReconfig.value = false;
+    }
+}
+
 function formatRelative(iso: string | null): string {
     if (!iso) return '—';
     const seconds = Math.max(
@@ -245,6 +358,46 @@ function formatRelative(iso: string | null): string {
                         {{ restarting ? 'Relance…' : 'Relancer' }}
                     </button>
                     <button
+                        v-if="canEnableValidator"
+                        type="button"
+                        class="rounded-md bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                        :disabled="submittingReconfig"
+                        data-testid="enable-validator-btn"
+                        @click="enableValidatorOpen = true"
+                    >
+                        Activer validateur
+                    </button>
+                    <button
+                        v-if="canDisableValidator"
+                        type="button"
+                        class="rounded-md border border-violet-300 bg-white px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                        :disabled="submittingReconfig"
+                        data-testid="disable-validator-btn"
+                        @click="onDisableValidator"
+                    >
+                        Désactiver validateur
+                    </button>
+                    <button
+                        v-if="canEnableMevBoost"
+                        type="button"
+                        class="rounded-md bg-fuchsia-600 px-3 py-2 text-sm font-medium text-white hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                        :disabled="submittingReconfig"
+                        data-testid="enable-mev-boost-btn"
+                        @click="enableMevBoostOpen = true"
+                    >
+                        Activer MEV-Boost
+                    </button>
+                    <button
+                        v-if="canDisableMevBoost"
+                        type="button"
+                        class="rounded-md border border-fuchsia-300 bg-white px-3 py-2 text-sm font-medium text-fuchsia-700 hover:bg-fuchsia-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                        :disabled="submittingReconfig"
+                        data-testid="disable-mev-boost-btn"
+                        @click="onDisableMevBoost"
+                    >
+                        Désactiver MEV-Boost
+                    </button>
+                    <button
                         type="button"
                         class="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-400"
                         :disabled="!canTerminate || terminating"
@@ -267,8 +420,35 @@ function formatRelative(iso: string | null): string {
                     >
                         {{ terminateError }}
                     </p>
+                    <p
+                        v-if="reconfigureError"
+                        class="w-full text-sm text-rose-700"
+                        role="alert"
+                    >
+                        {{ reconfigureError }}
+                    </p>
                 </div>
             </article>
+
+            <EnableValidatorModal
+                :open="enableValidatorOpen"
+                :submitting="submittingReconfig"
+                :error="reconfigureError"
+                :initial-fee-recipient="node.options.feeRecipient"
+                :initial-graffiti="node.options.graffiti"
+                @submit="onEnableValidator"
+                @close="enableValidatorOpen = false"
+            />
+
+            <EnableMevBoostModal
+                :open="enableMevBoostOpen"
+                :submitting="submittingReconfig"
+                :error="reconfigureError"
+                :initial-mev-min-bid="node.options.mevMinBid"
+                :initial-mev-build-factor="node.options.mevBuildFactor"
+                @submit="onEnableMevBoost"
+                @close="enableMevBoostOpen = false"
+            />
 
             <ValidatorKeysSection
                 :node-id="node.id"

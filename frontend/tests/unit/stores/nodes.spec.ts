@@ -37,6 +37,10 @@ function makeApi(overrides: Partial<NodesApi> = {}): NodesApi {
         create: vi.fn(),
         terminate: vi.fn(),
         restart: vi.fn(),
+        enableValidator: vi.fn(),
+        disableValidator: vi.fn(),
+        enableMevBoost: vi.fn(),
+        disableMevBoost: vi.fn(),
         listValidatorKeys: vi.fn(),
         generateValidatorKeys: vi.fn(),
         importValidatorKeys: vi.fn(),
@@ -171,6 +175,90 @@ describe('useNodesStore', () => {
 
         expect(store.get(node.id)?.status).toBe('PROVISIONING');
         expect(api.restart).toHaveBeenCalledWith(node.id);
+    });
+
+    it('enableValidator_should_mutate_options_when_api_succeeds', async () => {
+        const node = makeNode({ status: 'READY' });
+        const api = makeApi({
+            enableValidator: vi.fn().mockResolvedValue(undefined),
+        });
+        const store = useNodesStore();
+        store.upsert(node);
+
+        await store.enableValidator(api, node.id, {
+            feeRecipient: FEE_RECIPIENT,
+            graffiti: 'hello',
+        });
+
+        const stored = store.get(node.id);
+        expect(stored?.options.validator).toBe(true);
+        expect(stored?.options.feeRecipient).toBe(FEE_RECIPIENT);
+        expect(stored?.options.graffiti).toBe('hello');
+        expect(api.enableValidator).toHaveBeenCalledWith(node.id, {
+            feeRecipient: FEE_RECIPIENT,
+            graffiti: 'hello',
+        });
+    });
+
+    it('disableValidator_should_set_validator_false_when_api_succeeds', async () => {
+        const node = makeNode({
+            status: 'READY',
+            options: { ...DEFAULT_NODE_OPTIONS, validator: true },
+        });
+        const api = makeApi({
+            disableValidator: vi.fn().mockResolvedValue(undefined),
+        });
+        const store = useNodesStore();
+        store.upsert(node);
+
+        await store.disableValidator(api, node.id);
+
+        expect(store.get(node.id)?.options.validator).toBe(false);
+        expect(api.disableValidator).toHaveBeenCalledWith(node.id);
+    });
+
+    it('enableMevBoost_should_mutate_options_when_api_succeeds', async () => {
+        const node = makeNode({
+            status: 'READY',
+            options: { ...DEFAULT_NODE_OPTIONS, validator: true },
+        });
+        const api = makeApi({
+            enableMevBoost: vi.fn().mockResolvedValue(undefined),
+        });
+        const store = useNodesStore();
+        store.upsert(node);
+
+        await store.enableMevBoost(api, node.id, {
+            mevMinBid: '0.1',
+            mevBuildFactor: 80,
+        });
+
+        const stored = store.get(node.id);
+        expect(stored?.options.mevBoost).toBe(true);
+        expect(stored?.options.mevMinBid).toBe('0.1');
+        expect(stored?.options.mevBuildFactor).toBe(80);
+    });
+
+    it('disableMevBoost_should_set_mevBoost_false_when_api_succeeds', async () => {
+        const node = makeNode({
+            status: 'READY',
+            options: {
+                ...DEFAULT_NODE_OPTIONS,
+                validator: true,
+                mevBoost: true,
+            },
+        });
+        const api = makeApi({
+            disableMevBoost: vi.fn().mockResolvedValue(undefined),
+        });
+        const store = useNodesStore();
+        store.upsert(node);
+
+        await store.disableMevBoost(api, node.id);
+
+        const stored = store.get(node.id);
+        expect(stored?.options.mevBoost).toBe(false);
+        expect(stored?.options.validator).toBe(true);
     });
 
     it('fetchValidatorKeys_should_store_keys_for_node_when_api_returns', async () => {

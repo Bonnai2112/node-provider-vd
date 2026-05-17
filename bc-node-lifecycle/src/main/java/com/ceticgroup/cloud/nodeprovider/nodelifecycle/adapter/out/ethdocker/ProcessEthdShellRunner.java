@@ -105,6 +105,14 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
     }
 
     @Override
+    public void runEthdUpRemoveOrphans(Path workdir) throws IOException {
+        // ethd passes trailing args through to `docker compose up`, so --remove-orphans drops
+        // containers whose service no longer appears in COMPOSE_FILE (e.g. validator / mev-boost
+        // after a disable).
+        run(workdir, null, "./ethd", "up", "--remove-orphans");
+    }
+
+    @Override
     public void runEthdDown(Path workdir) throws IOException {
         run(workdir, null, "./ethd", "down");
     }

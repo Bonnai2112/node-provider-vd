@@ -18,7 +18,11 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.Pro
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.ProcessGitLsRemoteClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.ethdocker.RepositoryCheckpointSyncSourceLocator;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.out.jsonrpc.HttpBlockchainProbeAdapter;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DisableMevBoostUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DisableValidatorUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DownloadValidatorKeysUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.EnableMevBoostUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.EnableValidatorUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GenerateValidatorKeysUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GetNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ImportValidatorKeysUseCase;
@@ -38,7 +42,11 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.Validator
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyGeneratorPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyImporterPort;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.out.ValidatorKeyRepository;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.DisableMevBoostService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.DisableValidatorService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.DownloadValidatorKeysService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.EnableMevBoostService;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.EnableValidatorService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.GenerateValidatorKeysService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.GetNodeService;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.service.ImportValidatorKeysService;
@@ -119,6 +127,42 @@ public class NodeLifecycleConfiguration {
             DomainEventPublisher publisher,
             @Qualifier("nodeProvisionExecutor") Executor executor) {
         return new RestartNodeService(repository, orchestration, publisher, executor);
+    }
+
+    @Bean
+    EnableValidatorUseCase enableValidatorUseCase(
+            NodeRepository repository,
+            NodeOrchestrationPort orchestration,
+            DomainEventPublisher publisher,
+            @Qualifier("nodeProvisionExecutor") Executor executor) {
+        return new EnableValidatorService(repository, orchestration, publisher, executor);
+    }
+
+    @Bean
+    DisableValidatorUseCase disableValidatorUseCase(
+            NodeRepository repository,
+            NodeOrchestrationPort orchestration,
+            DomainEventPublisher publisher,
+            @Qualifier("nodeProvisionExecutor") Executor executor) {
+        return new DisableValidatorService(repository, orchestration, publisher, executor);
+    }
+
+    @Bean
+    EnableMevBoostUseCase enableMevBoostUseCase(
+            NodeRepository repository,
+            NodeOrchestrationPort orchestration,
+            DomainEventPublisher publisher,
+            @Qualifier("nodeProvisionExecutor") Executor executor) {
+        return new EnableMevBoostService(repository, orchestration, publisher, executor);
+    }
+
+    @Bean
+    DisableMevBoostUseCase disableMevBoostUseCase(
+            NodeRepository repository,
+            NodeOrchestrationPort orchestration,
+            DomainEventPublisher publisher,
+            @Qualifier("nodeProvisionExecutor") Executor executor) {
+        return new DisableMevBoostService(repository, orchestration, publisher, executor);
     }
 
     @Bean

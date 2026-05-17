@@ -10,6 +10,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.event.NodeReady;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.event.NodeRequested;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -467,6 +468,203 @@ class NodeTest {
     }
 
     @Nested
+    class EnableValidator {
+
+        private static final String FEE = "0x1111111111111111111111111111111111111111";
+
+        @Test
+        void enableValidator_should_setOptionsValidatorTrue_when_inReadyAndValidatorOff() {
+            Node node = nodeInReady();
+
+            node.enableValidator(FEE, Optional.of("hello-graffiti"));
+
+            assertThat(node.options().validator()).isTrue();
+            assertThat(node.options().feeRecipient()).isEqualTo(FEE);
+            assertThat(node.options().graffiti()).contains("hello-graffiti");
+        }
+
+        @Test
+        void enableValidator_should_preserveOtherOptions_when_alreadyHadMevDefaults() {
+            Node node = nodeInReady();
+
+            node.enableValidator(FEE, Optional.empty());
+
+            assertThat(node.options().mevBoost()).isFalse();
+            assertThat(node.options().graffiti()).isEmpty();
+        }
+
+        @Test
+        void enableValidator_should_throw_when_alreadyEnabled() {
+            Node node = nodeInReadyWithValidator();
+
+            assertThatThrownBy(() -> node.enableValidator(FEE, Optional.empty()))
+                    .isInstanceOf(ValidatorAlreadyEnabledException.class);
+        }
+
+        @Test
+        void enableValidator_should_throw_when_inSyncing() {
+            Node node = nodeInSyncing();
+
+            assertThatThrownBy(() -> node.enableValidator(FEE, Optional.empty()))
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void enableValidator_should_throw_when_inDegraded() {
+            Node node = nodeInDegraded();
+
+            assertThatThrownBy(() -> node.enableValidator(FEE, Optional.empty()))
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void enableValidator_should_throw_when_inStopped() {
+            Node node = nodeInStopped();
+
+            assertThatThrownBy(() -> node.enableValidator(FEE, Optional.empty()))
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void enableValidator_should_throw_when_feeRecipientIsNull() {
+            Node node = nodeInReady();
+
+            assertThatThrownBy(() -> node.enableValidator(null, Optional.empty()))
+                    .isInstanceOf(NullPointerException.class);
+        }
+
+        @Test
+        void enableValidator_should_throw_when_feeRecipientIsBlank() {
+            Node node = nodeInReady();
+
+            assertThatThrownBy(() -> node.enableValidator("  ", Optional.empty()))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void enableValidator_should_throw_when_graffitiIsNull() {
+            Node node = nodeInReady();
+
+            assertThatThrownBy(() -> node.enableValidator(FEE, null))
+                    .isInstanceOf(NullPointerException.class);
+        }
+    }
+
+    @Nested
+    class DisableValidator {
+
+        @Test
+        void disableValidator_should_setOptionsValidatorFalse_when_validatorEnabledAndMevOff() {
+            Node node = nodeInReadyWithValidator();
+
+            node.disableValidator();
+
+            assertThat(node.options().validator()).isFalse();
+        }
+
+        @Test
+        void disableValidator_should_throw_when_validatorNotEnabled() {
+            Node node = nodeInReady();
+
+            assertThatThrownBy(node::disableValidator)
+                    .isInstanceOf(ValidatorNotEnabledException.class);
+        }
+
+        @Test
+        void disableValidator_should_throw_when_mevBoostStillEnabled() {
+            Node node = nodeInReadyWithValidatorAndMevBoost();
+
+            assertThatThrownBy(node::disableValidator)
+                    .isInstanceOf(MevBoostRequiresValidatorException.class);
+        }
+
+        @Test
+        void disableValidator_should_throw_when_notInReady() {
+            Node node = nodeInSyncing();
+
+            assertThatThrownBy(node::disableValidator)
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+    }
+
+    @Nested
+    class EnableMevBoost {
+
+        @Test
+        void enableMevBoost_should_setOptionsMevTrue_when_validatorEnabled() {
+            Node node = nodeInReadyWithValidator();
+
+            node.enableMevBoost("0.1", 80);
+
+            assertThat(node.options().mevBoost()).isTrue();
+            assertThat(node.options().mevMinBid()).contains("0.1");
+            assertThat(node.options().mevBuildFactor()).hasValue(80);
+        }
+
+        @Test
+        void enableMevBoost_should_throw_when_validatorNotEnabled() {
+            Node node = nodeInReady();
+
+            assertThatThrownBy(() -> node.enableMevBoost("0.1", 80))
+                    .isInstanceOf(MevBoostRequiresValidatorException.class);
+        }
+
+        @Test
+        void enableMevBoost_should_throw_when_alreadyEnabled() {
+            Node node = nodeInReadyWithValidatorAndMevBoost();
+
+            assertThatThrownBy(() -> node.enableMevBoost("0.1", 80))
+                    .isInstanceOf(MevBoostAlreadyEnabledException.class);
+        }
+
+        @Test
+        void enableMevBoost_should_throw_when_notInReady() {
+            Node node = nodeInSyncing();
+
+            assertThatThrownBy(() -> node.enableMevBoost("0.1", 80))
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+
+        @Test
+        void enableMevBoost_should_throw_when_buildFactorOutOfRange() {
+            Node node = nodeInReadyWithValidator();
+
+            assertThatThrownBy(() -> node.enableMevBoost("0.1", 101))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Nested
+    class DisableMevBoost {
+
+        @Test
+        void disableMevBoost_should_setOptionsMevFalse_when_mevEnabled() {
+            Node node = nodeInReadyWithValidatorAndMevBoost();
+
+            node.disableMevBoost();
+
+            assertThat(node.options().mevBoost()).isFalse();
+            assertThat(node.options().validator()).isTrue();
+        }
+
+        @Test
+        void disableMevBoost_should_throw_when_mevNotEnabled() {
+            Node node = nodeInReadyWithValidator();
+
+            assertThatThrownBy(node::disableMevBoost)
+                    .isInstanceOf(MevBoostNotEnabledException.class);
+        }
+
+        @Test
+        void disableMevBoost_should_throw_when_notInReady() {
+            Node node = nodeInSyncing();
+
+            assertThatThrownBy(node::disableMevBoost)
+                    .isInstanceOf(IllegalNodeTransitionException.class);
+        }
+    }
+
+    @Nested
     class Terminate {
 
         @Test
@@ -754,6 +952,19 @@ class NodeTest {
     private static Node nodeInStopped() {
         Node n = nodeInReady();
         n.markStopped("test-stopped");
+        return n;
+    }
+
+    private static Node nodeInReadyWithValidator() {
+        Node n = nodeInReady();
+        n.enableValidator(
+                "0x2222222222222222222222222222222222222222", Optional.of("test-graffiti"));
+        return n;
+    }
+
+    private static Node nodeInReadyWithValidatorAndMevBoost() {
+        Node n = nodeInReadyWithValidator();
+        n.enableMevBoost("0.05", 90);
         return n;
     }
 }

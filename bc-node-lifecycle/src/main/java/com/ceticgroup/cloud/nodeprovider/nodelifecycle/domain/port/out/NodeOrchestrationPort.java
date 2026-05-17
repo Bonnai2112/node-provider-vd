@@ -44,4 +44,12 @@ public interface NodeOrchestrationPort {
      * existing workdir.
      */
     void restart(DeploymentRef ref);
+
+    /**
+     * Re-renders the .env / COMPOSE_FILE for an existing deployment using the new NodeOptions
+     * carried by {@code newSpec}, then runs `docker compose up -d --remove-orphans` so validator
+     * and/or mev-boost services are added or removed in place. Existing EL/CL containers whose
+     * config is unchanged are left running.
+     */
+    void applyOptionsChange(DeploymentRef ref, NodeSpec newSpec);
 }

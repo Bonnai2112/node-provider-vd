@@ -18,6 +18,13 @@ public interface EthdShellRunner {
 
     void runEthdUp(Path workdir) throws IOException;
 
+    /**
+     * Re-runs `ethd up` with `--remove-orphans` so docker compose stops services that disappeared
+     * from {@code COMPOSE_FILE}. Used by reconfiguration flows (toggling validator / mev-boost)
+     * where the set of services changes in place.
+     */
+    void runEthdUpRemoveOrphans(Path workdir) throws IOException;
+
     void runEthdDown(Path workdir) throws IOException;
 
     void runEthdTerminate(Path workdir) throws IOException;

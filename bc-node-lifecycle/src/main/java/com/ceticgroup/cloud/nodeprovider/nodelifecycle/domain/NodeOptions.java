@@ -41,4 +41,42 @@ public record NodeOptions(
                 Optional.empty(),
                 OptionalInt.empty());
     }
+
+    public NodeOptions withValidator(String feeRecipient, Optional<String> graffiti) {
+        Objects.requireNonNull(feeRecipient, "feeRecipient");
+        Objects.requireNonNull(graffiti, "graffiti");
+        return new NodeOptions(
+                true, this.mevBoost, feeRecipient, graffiti, this.mevMinBid, this.mevBuildFactor);
+    }
+
+    public NodeOptions withoutValidator() {
+        return new NodeOptions(
+                false,
+                this.mevBoost,
+                this.feeRecipient,
+                this.graffiti,
+                this.mevMinBid,
+                this.mevBuildFactor);
+    }
+
+    public NodeOptions withMevBoost(String mevMinBid, int mevBuildFactor) {
+        Objects.requireNonNull(mevMinBid, "mevMinBid");
+        return new NodeOptions(
+                this.validator,
+                true,
+                this.feeRecipient,
+                this.graffiti,
+                Optional.of(mevMinBid),
+                OptionalInt.of(mevBuildFactor));
+    }
+
+    public NodeOptions withoutMevBoost() {
+        return new NodeOptions(
+                this.validator,
+                false,
+                this.feeRecipient,
+                this.graffiti,
+                this.mevMinBid,
+                this.mevBuildFactor);
+    }
 }

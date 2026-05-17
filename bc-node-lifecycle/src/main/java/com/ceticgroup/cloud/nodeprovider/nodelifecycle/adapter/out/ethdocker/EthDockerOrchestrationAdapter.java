@@ -189,6 +189,36 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
     }
 
     @Override
+    public void applyOptionsChange(DeploymentRef ref, NodeSpec newSpec) {
+        DeploymentPayload payload = deserialize(ref);
+        Path workdir = Paths.get(payload.workdir());
+        try {
+            Optional<Path> elDataHostPathForRender =
+                    payload.elDataHostPath() == null
+                            ? Optional.empty()
+                            : Optional.of(Paths.get(payload.elDataHostPath()));
+            Map<String, String> defaults = shell.readDefaultEnv(workdir);
+            Optional<URI> checkpointOverride = checkpointLocator.findFor(newSpec.network());
+            Map<String, String> env =
+                    EthDockerEnvFile.render(
+                            newSpec,
+                            payload.ports(),
+                            payload.composeProjectName(),
+                            defaults,
+                            checkpointOverride,
+                            elDataHostPathForRender);
+            shell.writeEnv(workdir, EthDockerEnvFile.serialize(env));
+            // --remove-orphans is the whole point of this method: when validator or mev-boost is
+            // toggled off, COMPOSE_FILE drops the corresponding yml and we need docker compose to
+            // tear down the now-orphaned services in place. The existing EL/CL containers are
+            // left untouched because their config didn't change.
+            shell.runEthdUpRemoveOrphans(workdir);
+        } catch (IOException e) {
+            throw new IllegalStateException("eth-docker applyOptionsChange failed", e);
+        }
+    }
+
+    @Override
     public Optional<URI> internalClRestEndpointFor(DeploymentRef ref) {
         DeploymentPayload payload = deserialize(ref);
         return Optional.of(URI.create("http://127.0.0.1:" + payload.ports().clRestPort()));

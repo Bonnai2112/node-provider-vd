@@ -17,9 +17,9 @@ public final class Node {
     private final OwnerId owner;
     private final Network network;
     private final ClientPair clientPair;
-    private final NodeOptions options;
     private final List<NodeDomainEvent> pendingEvents = new ArrayList<>();
 
+    private NodeOptions options;
     private NodeStatus status;
     private DeploymentRef deploymentRef;
     private LastObservation lastObservation;
@@ -128,6 +128,55 @@ public final class Node {
         }
         status = new NodeStatus.Provisioning();
         pendingEvents.add(new NodeProvisioningStarted(id, Instant.now()));
+    }
+
+    public void enableValidator(String feeRecipient, Optional<String> graffiti) {
+        Objects.requireNonNull(feeRecipient, "feeRecipient");
+        Objects.requireNonNull(graffiti, "graffiti");
+        if (!(status instanceof NodeStatus.Ready)) {
+            throw IllegalNodeTransitionException.from(status, "enableValidator");
+        }
+        if (options.validator()) {
+            throw new ValidatorAlreadyEnabledException();
+        }
+        this.options = options.withValidator(feeRecipient, graffiti);
+    }
+
+    public void disableValidator() {
+        if (!(status instanceof NodeStatus.Ready)) {
+            throw IllegalNodeTransitionException.from(status, "disableValidator");
+        }
+        if (!options.validator()) {
+            throw new ValidatorNotEnabledException();
+        }
+        if (options.mevBoost()) {
+            throw MevBoostRequiresValidatorException.onDisableValidator();
+        }
+        this.options = options.withoutValidator();
+    }
+
+    public void enableMevBoost(String mevMinBid, int mevBuildFactor) {
+        Objects.requireNonNull(mevMinBid, "mevMinBid");
+        if (!(status instanceof NodeStatus.Ready)) {
+            throw IllegalNodeTransitionException.from(status, "enableMevBoost");
+        }
+        if (!options.validator()) {
+            throw MevBoostRequiresValidatorException.onEnable();
+        }
+        if (options.mevBoost()) {
+            throw new MevBoostAlreadyEnabledException();
+        }
+        this.options = options.withMevBoost(mevMinBid, mevBuildFactor);
+    }
+
+    public void disableMevBoost() {
+        if (!(status instanceof NodeStatus.Ready)) {
+            throw IllegalNodeTransitionException.from(status, "disableMevBoost");
+        }
+        if (!options.mevBoost()) {
+            throw new MevBoostNotEnabledException();
+        }
+        this.options = options.withoutMevBoost();
     }
 
     public void terminate() {

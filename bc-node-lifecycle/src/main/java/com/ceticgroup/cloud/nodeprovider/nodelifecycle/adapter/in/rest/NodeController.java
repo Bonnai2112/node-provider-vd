@@ -1,6 +1,8 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest;
 
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.CreateNodeRequest;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.EnableMevBoostRequest;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.EnableValidatorRequest;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest.dto.NodeResponse;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClClient;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ClientPair;
@@ -14,6 +16,10 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeNotFoundException;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DisableMevBoostUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DisableValidatorUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.EnableMevBoostUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.EnableValidatorUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GetNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ListNodesByOwnerUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ProvisionNodeCommand;
@@ -48,18 +54,30 @@ class NodeController {
     private final ListNodesByOwnerUseCase listNodesByOwnerUseCase;
     private final TerminateNodeUseCase terminateNodeUseCase;
     private final RestartNodeUseCase restartNodeUseCase;
+    private final EnableValidatorUseCase enableValidatorUseCase;
+    private final DisableValidatorUseCase disableValidatorUseCase;
+    private final EnableMevBoostUseCase enableMevBoostUseCase;
+    private final DisableMevBoostUseCase disableMevBoostUseCase;
 
     NodeController(
             ProvisionNodeUseCase provisionNodeUseCase,
             GetNodeUseCase getNodeUseCase,
             ListNodesByOwnerUseCase listNodesByOwnerUseCase,
             TerminateNodeUseCase terminateNodeUseCase,
-            RestartNodeUseCase restartNodeUseCase) {
+            RestartNodeUseCase restartNodeUseCase,
+            EnableValidatorUseCase enableValidatorUseCase,
+            DisableValidatorUseCase disableValidatorUseCase,
+            EnableMevBoostUseCase enableMevBoostUseCase,
+            DisableMevBoostUseCase disableMevBoostUseCase) {
         this.provisionNodeUseCase = provisionNodeUseCase;
         this.getNodeUseCase = getNodeUseCase;
         this.listNodesByOwnerUseCase = listNodesByOwnerUseCase;
         this.terminateNodeUseCase = terminateNodeUseCase;
         this.restartNodeUseCase = restartNodeUseCase;
+        this.enableValidatorUseCase = enableValidatorUseCase;
+        this.disableValidatorUseCase = disableValidatorUseCase;
+        this.enableMevBoostUseCase = enableMevBoostUseCase;
+        this.disableMevBoostUseCase = disableMevBoostUseCase;
     }
 
     @PostMapping
@@ -128,6 +146,46 @@ class NodeController {
     @PostMapping("/{id}/restart")
     ResponseEntity<Void> restart(@RequestHeader(OWNER_HEADER) UUID ownerId, @PathVariable UUID id) {
         restartNodeUseCase.restart(new NodeId(id), new OwnerId(ownerId));
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/{id}/validator/enable")
+    ResponseEntity<Void> enableValidator(
+            @RequestHeader(OWNER_HEADER) UUID ownerId,
+            @PathVariable UUID id,
+            @Valid @RequestBody EnableValidatorRequest request) {
+        enableValidatorUseCase.enable(
+                new NodeId(id),
+                new OwnerId(ownerId),
+                request.feeRecipient(),
+                Optional.ofNullable(request.graffiti()).filter(s -> !s.isBlank()));
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/{id}/validator/disable")
+    ResponseEntity<Void> disableValidator(
+            @RequestHeader(OWNER_HEADER) UUID ownerId, @PathVariable UUID id) {
+        disableValidatorUseCase.disable(new NodeId(id), new OwnerId(ownerId));
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/{id}/mev-boost/enable")
+    ResponseEntity<Void> enableMevBoost(
+            @RequestHeader(OWNER_HEADER) UUID ownerId,
+            @PathVariable UUID id,
+            @Valid @RequestBody EnableMevBoostRequest request) {
+        enableMevBoostUseCase.enable(
+                new NodeId(id),
+                new OwnerId(ownerId),
+                request.mevMinBid(),
+                request.mevBuildFactor());
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/{id}/mev-boost/disable")
+    ResponseEntity<Void> disableMevBoost(
+            @RequestHeader(OWNER_HEADER) UUID ownerId, @PathVariable UUID id) {
+        disableMevBoostUseCase.disable(new NodeId(id), new OwnerId(ownerId));
         return ResponseEntity.accepted().build();
     }
 

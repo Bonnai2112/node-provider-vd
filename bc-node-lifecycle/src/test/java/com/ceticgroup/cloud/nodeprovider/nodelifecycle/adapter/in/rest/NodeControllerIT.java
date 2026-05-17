@@ -21,6 +21,10 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeNotFoundException;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DisableMevBoostUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.DisableValidatorUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.EnableMevBoostUseCase;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.EnableValidatorUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.GetNodeUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ListNodesByOwnerUseCase;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.ProvisionNodeCommand;
@@ -53,6 +57,14 @@ class NodeControllerIT {
     @MockitoBean private TerminateNodeUseCase terminateNodeUseCase;
 
     @MockitoBean private RestartNodeUseCase restartNodeUseCase;
+
+    @MockitoBean private EnableValidatorUseCase enableValidatorUseCase;
+
+    @MockitoBean private DisableValidatorUseCase disableValidatorUseCase;
+
+    @MockitoBean private EnableMevBoostUseCase enableMevBoostUseCase;
+
+    @MockitoBean private DisableMevBoostUseCase disableMevBoostUseCase;
 
     @Test
     void post_should_return_202_with_location_header() throws Exception {

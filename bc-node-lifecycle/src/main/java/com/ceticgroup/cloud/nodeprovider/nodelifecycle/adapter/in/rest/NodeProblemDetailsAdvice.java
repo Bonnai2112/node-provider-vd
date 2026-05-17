@@ -1,7 +1,12 @@
 package com.ceticgroup.cloud.nodeprovider.nodelifecycle.adapter.in.rest;
 
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.IllegalNodeTransitionException;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.MevBoostAlreadyEnabledException;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.MevBoostNotEnabledException;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.MevBoostRequiresValidatorException;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeNotFoundException;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ValidatorAlreadyEnabledException;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.ValidatorNotEnabledException;
 import java.net.URI;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -36,6 +41,46 @@ class NodeProblemDetailsAdvice {
                 ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         pd.setTitle("Invalid request");
         pd.setType(URI.create(PROBLEM_BASE + "invalid-request"));
+        return pd;
+    }
+
+    @ExceptionHandler(ValidatorAlreadyEnabledException.class)
+    ProblemDetail handleValidatorAlreadyEnabled(ValidatorAlreadyEnabledException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        pd.setTitle("Validator already enabled");
+        pd.setType(URI.create(PROBLEM_BASE + "validator-already-enabled"));
+        return pd;
+    }
+
+    @ExceptionHandler(ValidatorNotEnabledException.class)
+    ProblemDetail handleValidatorNotEnabled(ValidatorNotEnabledException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        pd.setTitle("Validator not enabled");
+        pd.setType(URI.create(PROBLEM_BASE + "validator-not-enabled"));
+        return pd;
+    }
+
+    @ExceptionHandler(MevBoostAlreadyEnabledException.class)
+    ProblemDetail handleMevBoostAlreadyEnabled(MevBoostAlreadyEnabledException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        pd.setTitle("MEV-Boost already enabled");
+        pd.setType(URI.create(PROBLEM_BASE + "mev-boost-already-enabled"));
+        return pd;
+    }
+
+    @ExceptionHandler(MevBoostNotEnabledException.class)
+    ProblemDetail handleMevBoostNotEnabled(MevBoostNotEnabledException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        pd.setTitle("MEV-Boost not enabled");
+        pd.setType(URI.create(PROBLEM_BASE + "mev-boost-not-enabled"));
+        return pd;
+    }
+
+    @ExceptionHandler(MevBoostRequiresValidatorException.class)
+    ProblemDetail handleMevBoostRequiresValidator(MevBoostRequiresValidatorException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        pd.setTitle("MEV-Boost requires validator");
+        pd.setType(URI.create(PROBLEM_BASE + "mev-boost-requires-validator"));
         return pd;
     }
 }

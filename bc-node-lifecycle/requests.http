@@ -6,9 +6,13 @@
 @nodeId = 2849a60c-38d6-4c7f-a136-4274f227e05b
 # Remplacer par l'EL_RPC_PORT alloué pour ce node (visible dans deployment_ref.ports.elRpcPort
 # en DB, ou dans la réponse GET /api/v1/nodes/{id}.endpoint quand status=READY).
-@elRpcPort = 36169
+@elRpcPort = 43937
+# Remplacer par le CL_REST_HOST_PORT alloué pour ce node (deployment_ref.ports.clRestPort en DB).
+@clRestPort = 44161
 # Remplacer par une pubkey existante (sortie de POST /validator-keys/generate ou /import).
-@pubkey = 0xa10de8c28a096a2cea0af84be7979adc8944376248f2db4596ab212ffcb46312bcccd65523b13053f10ab8dc658b0bc5
+@pubkey = 0xac0129c40770a284be9dd76fa7988ce15aebe622f3a49a624235579d7c5f1be18a8f1fa303a973197e006b1131fb2efd
+# Predeploy EIP-7251 (CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS), identique sur toutes les chaines post-Pectra.
+@consolidationPredeploy = 0x0000BBdDc7CE488642fb579F8B00f3a590007251
 
 ###
 # ============================================================================
@@ -303,3 +307,110 @@ Content-Type: application/json
   "method": "web3_clientVersion",
   "params": []
 }
+
+###
+# ============================================================================
+# CL REST direct — appels au beacon node (lighthouse/teku/...) via le port
+# publié sur l'hôte par host-ports.yml. Pré-requis : node en status >= SYNCING
+# et @clRestPort mis à jour avec deployment_ref.ports.clRestPort.
+# ============================================================================
+
+###
+# Scénario 26 — Validator par pubkey → 200 avec withdrawal_credentials
+# Le premier byte de data.validator.withdrawal_credentials encode le type :
+#   0x00… = BLS (legacy, pas de retrait auto)
+#   0x01… = ETH1 (partial withdrawal auto, max effectif 32 ETH)
+#   0x02… = Compounding / EIP-7251 (max effectif 2048 ETH, plus de partial auto)
+# Pré-requis : la pubkey doit avoir été déposée sur le réseau (status active_*).
+GET http://localhost:{{clRestPort}}/eth/v1/beacon/states/head/validators/{{pubkey}}
+Accept: application/json
+
+###
+# ============================================================================
+# Consolidation requests — EIP-7251 (Pectra)
+# Pour passer un validateur de withdrawal credentials 0x01 -> 0x02
+# (compounding, max effectif 2048 ETH), on envoie une transaction au
+# predeploy système {{consolidationPredeploy}} avec :
+#   to     = predeploy
+#   value  = fee courante (interrogée via eth_call data vide)
+#   data   = source_pubkey (48B) || target_pubkey (48B) = 96B
+#   gas    ~ 30000 (le predeploy fait peu)
+# Pour une migration 0x01 -> 0x02 self-only : source == target == pubkey du validateur.
+# La tx DOIT être signée par l'EOA correspondant à l'adresse exec contenue
+# dans les withdrawal_credentials 0x01 actuels (cf. scénario 26).
+# ============================================================================
+
+###
+# Scénario 27 — Vérifier que le predeploy est bien déployé (Pectra activé)
+# Si 0x ou vide, la chaine n'a pas encore forké : consolidation impossible.
+POST http://localhost:{{elRpcPort}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "eth_getCode",
+  "params": ["{{consolidationPredeploy}}", "latest"]
+}
+
+###
+# Scénario 28 — Lire la fee courante du predeploy
+# Un eth_call avec data vide retourne le coût (uint256 wei) à payer en `value`
+# de la prochaine requête. La fee augmente quand la queue se remplit (EIP-1559-like).
+POST http://localhost:{{elRpcPort}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "eth_call",
+  "params": [
+    { "to": "{{consolidationPredeploy}}", "data": "0x" },
+    "latest"
+  ]
+}
+
+###
+# Scénario 29 — Estimer le gas d'une self-consolidation 0x01 -> 0x02
+# `from` = adresse exec qui figure dans withdrawal_credentials du validateur.
+# `data` = pubkey || pubkey (sans le 0x du second pour la concat).
+# Remplacer @from + ajuster @value avec le résultat du scénario 28.
+POST http://localhost:{{elRpcPort}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "eth_estimateGas",
+  "params": [{
+    "from": "0x8E73dB80662571abC3f4F06B7e5feA8C406A7F10",
+    "to": "{{consolidationPredeploy}}",
+    "value": "0x1",
+    "data": "0xac0129c40770a284be9dd76fa7988ce15aebe622f3a49a624235579d7c5f1be18a8f1fa303a973197e006b1131fb2efdac0129c40770a284be9dd76fa7988ce15aebe622f3a49a624235579d7c5f1be18a8f1fa303a973197e006b1131fb2efd"
+  }]
+}
+
+###
+# Scénario 30 — Soumettre une consolidation signée (raw tx)
+# Pré-signer offline (web3.py / ethers / foundry cast) avec :
+#   cast send {{consolidationPredeploy}} \
+#     0xac0129...2efdac0129...2efd \
+#     --value <fee_du_scenario_28> --private-key $PK --rpc-url http://localhost:{{elRpcPort}}
+# Puis coller le raw hex ci-dessous. Le node retourne le txHash.
+POST http://localhost:{{elRpcPort}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "eth_sendRawTransaction",
+  "params": ["0xREPLACE_WITH_SIGNED_RAW_TX_HEX"]
+}
+
+###
+# Scénario 31 — Pending consolidations côté CL (file d'attente côté beacon)
+# Tant que la consolidation n'est pas traitée par l'EL puis observée par le CL,
+# elle apparait ici. Une fois absorbée, withdrawal_credentials du scénario 26
+# bascule de 0x01… vers 0x02….
+GET http://localhost:{{clRestPort}}/eth/v1/beacon/states/head/pending_consolidations
+Accept: application/json

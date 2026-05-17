@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.bouncycastle.jcajce.provider.digest.Keccak;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,15 +74,16 @@ public class DepositCliTopupGenerator implements TopupDepositGeneratorPort {
                             .resolve(String.valueOf(Instant.now().toEpochMilli()));
             Files.createDirectories(topupDir);
             try {
-                runPartialDeposit(
-                        ethDir,
-                        keystoreFile,
-                        topupDir,
-                        chain,
-                        withdrawalAddress,
-                        amountEth,
-                        keystorePassword);
-                return readProducedDepositData(topupDir);
+                String stdout =
+                        runPartialDeposit(
+                                ethDir,
+                                keystoreFile,
+                                topupDir,
+                                chain,
+                                withdrawalAddress,
+                                amountEth,
+                                keystorePassword);
+                return readProducedDepositData(topupDir, stdout);
             } finally {
                 deleteRecursively(topupDir);
             }
@@ -93,7 +95,7 @@ public class DepositCliTopupGenerator implements TopupDepositGeneratorPort {
         }
     }
 
-    private void runPartialDeposit(
+    private String runPartialDeposit(
             Path ethDirMountSource,
             Path keystoreFile,
             Path hostOutputDir,
@@ -152,24 +154,39 @@ public class DepositCliTopupGenerator implements TopupDepositGeneratorPort {
         if (p.exitValue() != 0) {
             throw new IOException("partial-deposit exited " + p.exitValue() + ", output:\n" + out);
         }
+        return out.toString();
     }
 
-    private byte[] readProducedDepositData(Path topupDir) throws IOException {
-        try (Stream<Path> walk = Files.list(topupDir)) {
-            List<Path> produced =
+    private byte[] readProducedDepositData(Path topupDir, String cliStdout) throws IOException {
+        // Walk recursively because some deposit-cli versions write into a `partial_deposits`
+        // subfolder of --output_folder, others write directly into it. Picking the most recent
+        // matching file covers both layouts.
+        List<Path> produced;
+        try (Stream<Path> walk = Files.walk(topupDir)) {
+            produced =
                     walk.filter(Files::isRegularFile)
                             .filter(p -> p.getFileName().toString().endsWith(".json"))
                             .sorted(Comparator.comparing(Path::getFileName))
                             .toList();
-            if (produced.isEmpty()) {
-                throw new IOException(
-                        "partial-deposit did not produce any deposit file in " + topupDir);
-            }
-            // partial-deposit writes a single deposit_data-<ts>.json; if multiple appear (e.g. due
-            // to a retry artifact), pick the most recent so we always return what the run we just
-            // executed produced.
-            Path latest = produced.get(produced.size() - 1);
-            return Files.readAllBytes(latest);
+        }
+        if (produced.isEmpty()) {
+            throw new IOException(
+                    "partial-deposit did not produce any deposit file in "
+                            + topupDir
+                            + "; topup dir contents: "
+                            + listAllPaths(topupDir)
+                            + "; cli stdout:\n"
+                            + cliStdout);
+        }
+        Path latest = produced.get(produced.size() - 1);
+        return Files.readAllBytes(latest);
+    }
+
+    private static String listAllPaths(Path root) {
+        try (Stream<Path> walk = Files.walk(root)) {
+            return walk.map(Path::toString).sorted().toList().toString();
+        } catch (IOException e) {
+            return "<unreadable: " + e.getMessage() + ">";
         }
     }
 
@@ -247,7 +264,24 @@ public class DepositCliTopupGenerator implements TopupDepositGeneratorPort {
                             + tag
                             + " withdrawal credentials; top-up requires 0x01 or 0x02");
         }
-        return "0x" + s.substring(24);
+        return toEip55Checksum(s.substring(24));
+    }
+
+    static String toEip55Checksum(String addressHexNoPrefix) {
+        // deposit-cli refuses lowercase addresses to catch transcription typos. EIP-55 mixes case
+        // by hashing the lowercase ASCII of the address with keccak-256 and uppercasing each hex
+        // nibble whose corresponding hash nibble is >= 8.
+        String lower = addressHexNoPrefix.toLowerCase(Locale.ROOT);
+        Keccak.Digest256 keccak = new Keccak.Digest256();
+        byte[] hash = keccak.digest(lower.getBytes(StandardCharsets.US_ASCII));
+        StringBuilder out = new StringBuilder(2 + lower.length());
+        out.append("0x");
+        for (int i = 0; i < lower.length(); i++) {
+            char c = lower.charAt(i);
+            int hashNibble = (hash[i / 2] >> (i % 2 == 0 ? 4 : 0)) & 0x0f;
+            out.append(hashNibble >= 8 ? Character.toUpperCase(c) : c);
+        }
+        return out.toString();
     }
 
     private static String normalizePubkey(String pubkey) {

@@ -10,7 +10,7 @@
 # Remplacer par le CL_REST_HOST_PORT alloué pour ce node (deployment_ref.ports.clRestPort en DB).
 @clRestPort = 44161
 # Remplacer par une pubkey existante (sortie de POST /validator-keys/generate ou /import).
-@pubkey = 0xb9fa1300aa8982e6a5bb52a4de458e5b6f07f5ff838750d0246338b6b8f619c447e6c2ee4a332e658d0cf2e37fc1502f
+@pubkey = 0x834f436be0b91eff1484434e31f9943f295a4dd2005bce8654aff50acea55c3910f9256a169ac8098b8abbb36a8c33d9
 # Predeploy EIP-7251 (CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS), identique sur toutes les chaines post-Pectra.
 @consolidationPredeploy = 0x0000BBdDc7CE488642fb579F8B00f3a590007251
 

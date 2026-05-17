@@ -5,6 +5,18 @@ Pour le détail d'un commit : `git show <sha>`.
 
 ---
 
+## 2026-05-17 (suite) — Fix top-up partial-deposit (EIP-55 + lecture récursive)
+
+- **fix(node-lifecycle)**: top-up validateur via `partial-deposit` — encode
+  l'adresse de withdrawal en EIP-55 avant de la passer à `deposit-cli` (qui
+  rejette les adresses tout en minuscules pour éviter les fautes de frappe),
+  via `bouncycastle` (`Keccak.Digest256`). Recherche désormais le
+  `deposit_data-*.json` de manière récursive sous `--output_folder` car
+  certaines versions de `deposit-cli` écrivent dans un sous-dossier
+  `partial_deposits/`. Diagnostic enrichi en cas d'absence de fichier
+  (listing du dossier + stdout CLI). Tests unitaires EIP-55 sur les vecteurs
+  de référence de l'EIP.
+
 ## 2026-05-17 (suite) — Polling frontend de la génération asynchrone
 
 - **feat(front)**: polling pour la génération asynchrone de clés validator —

@@ -5,6 +5,22 @@ Pour le détail d'un commit : `git show <sha>`.
 
 ---
 
+## 2026-05-23 — Timeout dédié pour l'extraction du tarball template
+
+- **fix(node-lifecycle)** : `extractTarballZstd` a désormais un timeout de
+  3600 s au lieu des 600 s par défaut du `ProcessEthdShellRunner.run()`.
+  Deux provisionings consécutifs ont failed (`status_reason: deploy failed:
+  eth-docker deploy failed`) avec un `data/` partiel (59 GB puis 28 GB sur
+  les ~90 GB attendus) : le `tar --use-compress-program=zstd -xf` du tarball
+  74 GB compressé était `destroyForcibly` après 10 min, exit non-zéro
+  remonté en IOException, et le workdir partiellement préparé restait sur
+  disque (sans `el-datadir-bind.yml` puisqu'il est écrit après le chown).
+  Mesure : zstd seul fait ~130 MB/s sur cette VM, et le pipeline complet
+  (tar + écriture sur /dev/sdb partagé avec un node en cours de fonctionnement)
+  passe sous le seuil ~150 MB/s nécessaire pour finir en 10 min. Nouvelle
+  surcharge `run(workdir, stdin, timeoutSeconds, command...)` pour cibler ce
+  cas sans toucher au fail-safe 600 s des autres ops (ethd up/down/terminate).
+
 ## 2026-05-23 — DELETE /nodes idempotent + cleanup du dossier nodes/{nodeId}
 
 - **fix(node-lifecycle)** : `DELETE /api/v1/nodes/{id}` ne renvoie plus 409

@@ -17,6 +17,12 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
 
     private static final long PROCESS_TIMEOUT_SECONDS = 600;
 
+    // Tarball extraction is decompression-bound (~90 GB out of a 74 GB zstd tarball) and runs
+    // concurrently with other nodes' disk IO. Measured throughput on /dev/sdb is below the
+    // 150 MB/s a 10 min budget would require, so we give this op its own ceiling — a fail-safe
+    // for genuinely stuck processes, not a tight SLO.
+    private static final long EXTRACT_TIMEOUT_SECONDS = 3600;
+
     @Override
     public void ensureCache(Path cacheDir, String repoUrl) throws IOException {
         Files.createDirectories(cacheDir.getParent() == null ? cacheDir : cacheDir.getParent());
@@ -215,6 +221,7 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
         run(
                 targetDir,
                 null,
+                EXTRACT_TIMEOUT_SECONDS,
                 "tar",
                 "--use-compress-program=zstd",
                 "-xf",
@@ -290,6 +297,11 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
     }
 
     private static void run(Path workdir, String stdin, String... command) throws IOException {
+        run(workdir, stdin, PROCESS_TIMEOUT_SECONDS, command);
+    }
+
+    private static void run(Path workdir, String stdin, long timeoutSeconds, String... command)
+            throws IOException {
         ProcessBuilder pb =
                 new ProcessBuilder(command)
                         .directory(workdir.toFile())
@@ -305,7 +317,7 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
             }
         }
         try {
-            if (!p.waitFor(PROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            if (!p.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
                 throw new IOException("command timed out: " + String.join(" ", command));
             }

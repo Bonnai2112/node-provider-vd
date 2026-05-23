@@ -35,6 +35,25 @@
   - Persistance : table `validator_keys(id, node_id, pubkey UNIQUE,
     imported_at)` (cascade depuis `nodes`).
 
+## À faire — top-up validateur
+
+- **Soumission on-chain du top-up depuis le front.** Le backend produit
+  déjà le `deposit_data.json` via `POST /…/validator-keys/{pubkey}/topup-deposit-data`,
+  mais l'utilisateur n'a aujourd'hui aucun moyen simple de le déposer
+  (le launchpad Ethereum rejette toute pubkey déjà connue du beacon —
+  il ne gère pas les partial deposits EIP-7251).
+  Ajouter un bouton "Top-up on-chain" dans le détail du nœud qui :
+  - lit l'entrée du JSON (`pubkey`, `withdrawal_credentials`,
+    `signature`, `deposit_data_root`, `amount`),
+  - encode l'appel `DepositContract.deposit(bytes,bytes,bytes,bytes32)`
+    et envoie la tx via le wallet connecté (`value = amount * 1 gwei`).
+  - Stack pressentie : **viem** seul si on cible MetaMask injected
+    desktop (~20 lignes, pas de lib lourde) ; ajouter **wagmi** +
+    connecteur WalletConnect si on veut couvrir mobile / multi-wallet.
+  - WalletConnect "direct" sans viem est à éviter : il faudrait
+    encoder l'ABI à la main.
+  - Adresses du deposit contract à câbler par réseau (Hoodi / Sepolia).
+
 ## Décisions à arbitrer
 
 - **Génération des clés validator** : aujourd'hui via
@@ -64,3 +83,6 @@
 ## Suivi
 
 - README de référence : [bc-node-lifecycle/README.md](bc-node-lifecycle/README.md).
+- Étude multichaine (BSC, Base, Solana, XRPL, Bitcoin) — options
+  d'architecture, effort, décisions à arbitrer :
+  [docs/multichain-study.md](docs/multichain-study.md).

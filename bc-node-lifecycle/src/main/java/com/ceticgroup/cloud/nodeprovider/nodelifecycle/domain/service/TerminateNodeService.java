@@ -4,6 +4,7 @@ import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.DeploymentRef;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.Node;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeNotFoundException;
+import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeStatus;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.OwnerId;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.event.NodeDomainEvent;
 import com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.port.in.TerminateNodeUseCase;
@@ -41,9 +42,14 @@ public final class TerminateNodeService implements TerminateNodeUseCase {
         if (!node.owner().equals(requester)) {
             throw new NodeNotFoundException(id);
         }
+        NodeStatus before = node.status();
         node.terminate();
         repository.save(node);
         publishPending(node);
+
+        if (before instanceof NodeStatus.Terminating || before instanceof NodeStatus.Terminated) {
+            return;
+        }
 
         DeploymentRef ref = node.deploymentRef();
         executor.execute(() -> tearDownAsync(id, ref));
@@ -54,13 +60,27 @@ public final class TerminateNodeService implements TerminateNodeUseCase {
             if (ref != null) {
                 orchestration.tearDown(ref);
             }
-            transition(id, Node::markTerminated);
+            transition(id, TerminateNodeService::markTerminatedIfTerminating);
         } catch (RuntimeException e) {
             try {
-                transition(id, n -> n.fail("teardown failed: " + safeMessage(e)));
+                transition(id, n -> failIfNotTerminal(n, "teardown failed: " + safeMessage(e)));
             } catch (RuntimeException ignored) {
             }
         }
+    }
+
+    private static void markTerminatedIfTerminating(Node node) {
+        if (node.status() instanceof NodeStatus.Terminating) {
+            node.markTerminated();
+        }
+    }
+
+    private static void failIfNotTerminal(Node node, String reason) {
+        if (node.status() instanceof NodeStatus.Terminated
+                || node.status() instanceof NodeStatus.Failed) {
+            return;
+        }
+        node.fail(reason);
     }
 
     private void transition(NodeId id, java.util.function.Consumer<Node> mutation) {

@@ -5,6 +5,27 @@ Pour le détail d'un commit : `git show <sha>`.
 
 ---
 
+## 2026-05-23 — DELETE /nodes idempotent + cleanup du dossier nodes/{nodeId}
+
+- **fix(node-lifecycle)** : `DELETE /api/v1/nodes/{id}` ne renvoie plus 409
+  Conflict quand le nœud est déjà dans un état `Terminating`/`Terminated`/`Failed`.
+  `Node.terminate()` devient idempotent : no-op sur `Terminating` et
+  `Terminated` (ressources déjà libérées, on évite de re-attaquer un workdir
+  supprimé) ; transition forcée vers `Terminating` depuis `Failed` pour
+  relancer le teardown Docker des ressources résiduelles.
+  `TerminateNodeService` skip le teardown asynchrone si le statut entrant
+  était déjà terminal, et `tearDownAsync` guard `markTerminated`/`fail` pour
+  rester idempotent. Statut de retour inchangé (202 Accepted).
+- **feat(node-lifecycle)** : le teardown supprime désormais le dossier parent
+  `/var/lib/platform/nodes/{nodeId}/` après `eth-docker/` et `data/`. Nouvelle
+  shell op `removeNodeRoot` qui passe par `sudo -n /bin/rm -rf` — symétrique
+  au `sudo chown` du déploy, indispensable parce que les fichiers du datadir
+  EL sont chownés à l'UID 10000 et que le user backend ne peut pas les
+  supprimer en direct. Garde-fou : on n'appelle `removeNodeRoot` que si le
+  parent du workdir est un descendant direct de `app.platform.eth-docker.root-dir`.
+  **Pré-requis ops** : ajouter au sudoers
+  `<backend-user> ALL=(root) NOPASSWD: /bin/rm -rf /var/lib/platform/nodes/*`.
+
 ## 2026-05-17 (suite) — Fix top-up partial-deposit (EIP-55 + lecture récursive)
 
 - **fix(node-lifecycle)**: top-up validateur via `partial-deposit` — encode

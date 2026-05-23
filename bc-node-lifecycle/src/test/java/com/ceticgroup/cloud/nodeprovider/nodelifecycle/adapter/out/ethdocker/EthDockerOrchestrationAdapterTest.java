@@ -284,6 +284,7 @@ class EthDockerOrchestrationAdapterTest {
         verify(shell).runEthdTerminate(Path.of("/tmp/platform/nodes/x/eth-docker"));
         verify(shell).removeWorkdir(Path.of("/tmp/platform/nodes/x/eth-docker"));
         verify(shell).removeDataDir(Path.of("/tmp/platform/nodes/x/data"));
+        verify(shell).removeNodeRoot(Path.of("/tmp/platform/nodes/x"));
     }
 
     @Test
@@ -301,6 +302,25 @@ class EthDockerOrchestrationAdapterTest {
         adapter.tearDown(ref);
 
         verify(shell, org.mockito.Mockito.never()).removeDataDir(any());
+        verify(shell).removeNodeRoot(Path.of("/tmp/platform/nodes/x"));
+    }
+
+    @Test
+    void tearDown_should_skipRemoveNodeRoot_when_workdirNotUnderRootDir() throws Exception {
+        // Defensive guard: if the persisted workdir lives outside the configured rootDir
+        // (legacy payload, manual fixture), we MUST NOT recursively sudo rm its parent.
+        DeploymentPayload payload =
+                new DeploymentPayload(
+                        "/some/other/path/eth-docker",
+                        "node-deadbeef",
+                        new AllocatedPorts(30100, 30101, 30102, 30103, 30104, 30105, 30106),
+                        new EthDockerRef("v26.4.1", "abc123"),
+                        null);
+        DeploymentRef ref = new DeploymentRef(mapper.writeValueAsString(payload));
+
+        adapter.tearDown(ref);
+
+        verify(shell, org.mockito.Mockito.never()).removeNodeRoot(any());
     }
 
     @Test

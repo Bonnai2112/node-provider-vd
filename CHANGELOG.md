@@ -26,6 +26,23 @@ Pour le détail d'un commit : `git show <sha>`.
   **Pré-requis ops** : ajouter au sudoers
   `<backend-user> ALL=(root) NOPASSWD: /bin/rm -rf /var/lib/platform/nodes/*`.
 
+## 2026-05-23 — Job de tarball : ramener le frozen node à Ready
+
+- **fix(ops)** : `produce-el-template.sh` appelle désormais
+  `POST {PLATFORM_API}/nodes/{FROZEN_NODE_ID}/restart` (header `X-Owner-Id`)
+  dans son trap EXIT, après le redémarrage du conteneur EL. Sans cet appel,
+  le reconciler observait l'EL absent pendant le snapshot, basculait
+  l'agrégat en `STOPPED`, et aucune branche du `switch` de
+  `ReconcileNodeStatusService.applyTransition` ne sortait le nœud de cet
+  état même après le redémarrage du conteneur. Opt-in via trois nouvelles
+  variables d'env (`PLATFORM_API`, `FROZEN_NODE_ID`, `FROZEN_NODE_OWNER_ID`)
+  documentées dans `ops/example-hoodi-geth.env` ; sans elles, le
+  comportement précédent est conservé (warning + skip). Une 409 du
+  endpoint est traitée comme bénigne (le reconciler n'a pas encore tické,
+  le nœud n'est pas encore en STOPPED). Body du Problem Details loggué
+  pour tout code non-2xx/409 afin de diagnostiquer rapidement les
+  mauvaises configs (UUID malformé, commentaire inline dans le `.env`…).
+
 ## 2026-05-17 (suite) — Fix top-up partial-deposit (EIP-55 + lecture récursive)
 
 - **fix(node-lifecycle)**: top-up validateur via `partial-deposit` — encode

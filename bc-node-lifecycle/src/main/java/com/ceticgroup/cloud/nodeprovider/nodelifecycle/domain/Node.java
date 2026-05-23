@@ -180,10 +180,8 @@ public final class Node {
     }
 
     public void terminate() {
-        if (status instanceof NodeStatus.Terminating
-                || status instanceof NodeStatus.Terminated
-                || status instanceof NodeStatus.Failed) {
-            throw IllegalNodeTransitionException.from(status, "terminate");
+        if (status instanceof NodeStatus.Terminating || status instanceof NodeStatus.Terminated) {
+            return;
         }
         status = new NodeStatus.Terminating();
     }

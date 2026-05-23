@@ -732,24 +732,30 @@ class NodeTest {
         }
 
         @Test
-        void terminate_should_throw_when_alreadyTerminating() {
+        void terminate_should_remainTerminating_when_alreadyTerminating() {
             Node node = nodeInTerminating();
 
-            assertThatThrownBy(node::terminate).isInstanceOf(IllegalNodeTransitionException.class);
+            node.terminate();
+
+            assertThat(node.status()).isInstanceOf(NodeStatus.Terminating.class);
         }
 
         @Test
-        void terminate_should_throw_when_alreadyTerminated() {
+        void terminate_should_remainTerminated_when_alreadyTerminated() {
             Node node = nodeInTerminated();
 
-            assertThatThrownBy(node::terminate).isInstanceOf(IllegalNodeTransitionException.class);
+            node.terminate();
+
+            assertThat(node.status()).isInstanceOf(NodeStatus.Terminated.class);
         }
 
         @Test
-        void terminate_should_throw_when_failed() {
+        void terminate_should_transitionToTerminating_when_failed() {
             Node node = nodeInFailed();
 
-            assertThatThrownBy(node::terminate).isInstanceOf(IllegalNodeTransitionException.class);
+            node.terminate();
+
+            assertThat(node.status()).isInstanceOf(NodeStatus.Terminating.class);
         }
     }
 

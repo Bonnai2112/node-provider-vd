@@ -34,6 +34,14 @@ public interface EthdShellRunner {
     void removeWorkdir(Path workdir) throws IOException;
 
     /**
+     * Removes the per-node root directory ({rootDir}/{nodeId}) recursively, including the EL data
+     * dir owned by the eth-docker container UID. Goes through {@code sudo rm -rf} — symmetric to
+     * the {@code sudo chown} performed at deploy time. Required sudoers entry: {@code
+     * <backend-user> ALL=(root) NOPASSWD: /bin/rm -rf /var/lib/platform/nodes/*}. Idempotent.
+     */
+    void removeNodeRoot(Path nodeRoot) throws IOException;
+
+    /**
      * Creates the host-side EL datadir and chowns it to the eth-docker container UID so the EL
      * process can write to the bind mount. Idempotent.
      */

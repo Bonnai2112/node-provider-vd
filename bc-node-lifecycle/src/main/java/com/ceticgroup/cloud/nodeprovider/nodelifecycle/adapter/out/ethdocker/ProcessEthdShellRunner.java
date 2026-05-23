@@ -188,6 +188,26 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
     }
 
     @Override
+    public void removeNodeRoot(Path nodeRoot) throws IOException {
+        if (!Files.exists(nodeRoot)) {
+            return;
+        }
+        // The data dir is chowned to UID 10000 at deploy time (see ensureDataDir), so a
+        // best-effort Files.walk delete from the backend user silently fails on those
+        // entries. We delegate to root via sudo to make the cleanup actually effective.
+        // Required sudoers entry:
+        //   <backend-user> ALL=(root) NOPASSWD: /bin/rm -rf /var/lib/platform/nodes/*
+        run(
+                nodeRoot.getParent() == null ? nodeRoot : nodeRoot.getParent(),
+                null,
+                "sudo",
+                "-n",
+                "/bin/rm",
+                "-rf",
+                nodeRoot.toString());
+    }
+
+    @Override
     public void extractTarballZstd(Path tarball, Path targetDir) throws IOException {
         Files.createDirectories(targetDir);
         // GNU tar's --use-compress-program lets us decompress with zstd without resorting to a

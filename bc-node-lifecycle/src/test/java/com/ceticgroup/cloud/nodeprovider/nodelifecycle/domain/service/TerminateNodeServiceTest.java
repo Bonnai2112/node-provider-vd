@@ -100,6 +100,75 @@ class TerminateNodeServiceTest {
     }
 
     @Test
+    void terminate_should_skipTearDown_when_alreadyTerminated() {
+        OwnerId owner = new OwnerId(UUID.randomUUID());
+        NodeId id = new NodeId(UUID.randomUUID());
+        DeploymentRef ref = new DeploymentRef("{}");
+        Node node =
+                Node.restore(
+                        id,
+                        owner,
+                        Network.HOODI,
+                        ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults(),
+                        new NodeStatus.Terminated(),
+                        ref);
+        when(repository.findById(id)).thenReturn(Optional.of(node));
+
+        service.terminate(id, owner);
+
+        then(orchestration).should(never()).tearDown(any());
+        assertThat(node.status()).isInstanceOf(NodeStatus.Terminated.class);
+    }
+
+    @Test
+    void terminate_should_skipTearDown_when_alreadyTerminating() {
+        OwnerId owner = new OwnerId(UUID.randomUUID());
+        NodeId id = new NodeId(UUID.randomUUID());
+        DeploymentRef ref = new DeploymentRef("{}");
+        Node node =
+                Node.restore(
+                        id,
+                        owner,
+                        Network.HOODI,
+                        ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults(),
+                        new NodeStatus.Terminating(),
+                        ref);
+        when(repository.findById(id)).thenReturn(Optional.of(node));
+
+        service.terminate(id, owner);
+
+        then(orchestration).should(never()).tearDown(any());
+        assertThat(node.status()).isInstanceOf(NodeStatus.Terminating.class);
+    }
+
+    @Test
+    void terminate_should_retryTearDownAndMarkTerminated_when_previouslyFailed() {
+        OwnerId owner = new OwnerId(UUID.randomUUID());
+        NodeId id = new NodeId(UUID.randomUUID());
+        DeploymentRef ref = new DeploymentRef("{}");
+        Node node =
+                Node.restore(
+                        id,
+                        owner,
+                        Network.HOODI,
+                        ClientPair.besuTeku(),
+                        com.ceticgroup.cloud.nodeprovider.nodelifecycle.domain.NodeOptions
+                                .defaults(),
+                        new NodeStatus.Failed("previous teardown failed"),
+                        ref);
+        when(repository.findById(id)).thenReturn(Optional.of(node));
+
+        service.terminate(id, owner);
+
+        then(orchestration).should().tearDown(ref);
+        assertThat(node.status()).isInstanceOf(NodeStatus.Terminated.class);
+    }
+
+    @Test
     void terminate_should_failNode_when_tearDownThrows() {
         OwnerId owner = new OwnerId(UUID.randomUUID());
         NodeId id = new NodeId(UUID.randomUUID());

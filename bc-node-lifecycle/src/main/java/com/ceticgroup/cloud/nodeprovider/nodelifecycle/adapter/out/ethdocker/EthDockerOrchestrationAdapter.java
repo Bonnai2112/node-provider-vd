@@ -138,6 +138,12 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
             if (payload.elDataHostPath() != null) {
                 shell.removeDataDir(Paths.get(payload.elDataHostPath()));
             }
+            Path nodeRoot = workdir.getParent();
+            if (nodeRoot != null
+                    && nodeRoot.getParent() != null
+                    && nodeRoot.getParent().equals(Paths.get(properties.rootDir()))) {
+                shell.removeNodeRoot(nodeRoot);
+            }
         } catch (IOException e) {
             throw new IllegalStateException("eth-docker tearDown failed", e);
         }

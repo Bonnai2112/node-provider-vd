@@ -15,6 +15,7 @@ node-provider-vd/
 ├── bc-node-lifecycle/       # Bounded context: cycle de vie des nœuds
 ├── bc-faucet/               # Bounded context: faucet PoW
 ├── bc-tenant/               # Bounded context: tenants et quotas
+├── bc-log-triage/           # Bounded context: triage d'alertes logs → MR draft
 ├── app-bootstrap/           # Entrée Spring Boot — agrège les BC
 ├── frontend/                # Nuxt 3 (TypeScript strict, Tailwind, Pinia)
 └── .github/workflows/ci.yml # Pipeline CI (backend puis frontend)

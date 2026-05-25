@@ -12,6 +12,12 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  ai:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      chat:
+        options:
+          model: claude-opus-4-7
 
 server:
   port: ${SERVER_PORT:8080}
@@ -25,6 +31,60 @@ app:
       templates-dir: ${PLATFORM_TEMPLATES:/var/lib/platform/templates}
       public-host: ${PLATFORM_PUBLIC_HOST:163.172.232.194}
       deposit-cli-image: ${DEPOSIT_CLI_IMAGE:ghcr.io/ethstaker/ethstaker-deposit-cli:v1.3.0}
+  log-triage:
+    safety:
+      enabled: ${LOG_TRIAGE_ENABLED:false}
+      daily-merge-request-quota: ${LOG_TRIAGE_DAILY_MR_QUOTA:5}
+      confidence-threshold-percent: ${LOG_TRIAGE_CONFIDENCE_THRESHOLD:80}
+      allowed-path-prefixes:
+        - src/main/java/
+        - src/test/java/
+    webhook:
+      token: ${LOG_TRIAGE_WEBHOOK_TOKEN:replace-me}
+      queue-capacity: 64
+    loki:
+      base-url: ${LOKI_URL:http://loki:3100}
+      window-before: PT5M
+      window-after: PT1M
+      max-lines: 200
+    git:
+      repo-root-path: ${LOG_TRIAGE_REPO_ROOT:/var/lib/log-triage/workspace}
+      max-snippets: 8
+    gitlab:
+      base-url: ${GITLAB_URL:https://gitlab.example}
+      token: ${GITLAB_TOKEN:replace-me}
+      project-path: ${LOG_TRIAGE_PROJECT_PATH:group/project}
+      base-branch: main
+    verification:
+      repo-url: ${LOG_TRIAGE_REPO_URL:https://gitlab.example/group/project.git}
+      base-branch: main
+      maven-image: ${LOG_TRIAGE_MAVEN_IMAGE:maven:3.9.9-eclipse-temurin-25}
+      timeout-seconds: 900
+
+resilience4j:
+  retry:
+    instances:
+      claude:
+        max-attempts: 3
+        wait-duration: 2s
+        retry-exceptions:
+          - java.lang.RuntimeException
+  circuitbreaker:
+    instances:
+      claude:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
 
 logging:
   level:

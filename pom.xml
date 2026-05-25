@@ -17,6 +17,7 @@
         <module>bc-node-lifecycle</module>
         <module>bc-faucet</module>
         <module>bc-tenant</module>
+        <module>bc-log-triage</module>
         <module>app-bootstrap</module>
     </modules>
 

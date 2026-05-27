@@ -97,6 +97,7 @@ class EthDockerOrchestrationAdapterTest {
         verify(shell).writeFile(any(), eq("host-ports.yml"), anyString());
         verify(shell).writeFile(any(), eq("shared-network.yml"), anyString());
         verify(networkManager).ensureSharedNetworkExists("node-provider-shared");
+        verify(shell).ensureVolumeOwnership(any(), eq("ee-secret"), eq(10001));
         verify(shell).runEthdUp(any());
 
         DeploymentPayload payload = mapper.readValue(result.payload(), DeploymentPayload.class);

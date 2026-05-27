@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class ProcessEthdShellRunner implements EthdShellRunner {
@@ -214,6 +215,28 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
     }
 
     @Override
+    public void ensureVolumeOwnership(String composeProjectName, String volumeName, int ownerUid)
+            throws IOException {
+        String fullName = composeProjectName + "_" + volumeName;
+        run(Path.of("/tmp"), null, "docker", "volume", "create", fullName);
+        String mountpoint =
+                captureOutput(
+                        "docker", "volume", "inspect", fullName, "--format", "{{.Mountpoint}}");
+        // Required sudoers entry — see bc-node-lifecycle/README.md:
+        //   <backend-user> ALL=(root) NOPASSWD: /usr/bin/chown -R *\:*
+        //   /var/lib/docker/volumes/node-*
+        run(
+                Path.of("/tmp"),
+                null,
+                "sudo",
+                "-n",
+                "/usr/bin/chown",
+                "-R",
+                ownerUid + ":" + ownerUid,
+                mountpoint);
+    }
+
+    @Override
     public void extractTarballZstd(Path tarball, Path targetDir) throws IOException {
         Files.createDirectories(targetDir);
         // GNU tar's --use-compress-program lets us decompress with zstd without resorting to a
@@ -244,6 +267,35 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
                                 }
                             });
         }
+    }
+
+    private static String captureOutput(String... command) throws IOException {
+        Process p = new ProcessBuilder(command).redirectErrorStream(true).start();
+        String output;
+        try (BufferedReader r =
+                new BufferedReader(
+                        new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+            output = r.lines().collect(Collectors.joining("\n")).trim();
+        }
+        try {
+            if (!p.waitFor(PROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                throw new IOException("command timed out: " + String.join(" ", command));
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("command interrupted", e);
+        }
+        if (p.exitValue() != 0) {
+            throw new IOException(
+                    "command failed with exit "
+                            + p.exitValue()
+                            + ": "
+                            + String.join(" ", command)
+                            + "\noutput:\n"
+                            + output);
+        }
+        return output;
     }
 
     private static void runCapturing(

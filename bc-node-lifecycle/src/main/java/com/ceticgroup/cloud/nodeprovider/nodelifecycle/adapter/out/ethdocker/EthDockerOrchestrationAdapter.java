@@ -54,6 +54,10 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
     // host-side bind-mounted datadir to this UID so the EL process can write to it.
     private static final int ETH_DOCKER_UID = 10000;
 
+    // UID used by the CL container for the ee-secret volume (JWT shared between EL and CL).
+    private static final int EE_SECRET_OWNER_UID = 10001;
+    private static final String EE_SECRET_VOLUME = "ee-secret";
+
     @Override
     public DeploymentRef deploy(NodeSpec spec) {
         try {
@@ -112,6 +116,7 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
 
             networkManager.ensureSharedNetworkExists(EthDockerEnvFile.SHARED_NETWORK_NAME);
 
+            shell.ensureVolumeOwnership(projectName, EE_SECRET_VOLUME, EE_SECRET_OWNER_UID);
             shell.runEthdUp(workdir);
 
             DeploymentPayload payload =

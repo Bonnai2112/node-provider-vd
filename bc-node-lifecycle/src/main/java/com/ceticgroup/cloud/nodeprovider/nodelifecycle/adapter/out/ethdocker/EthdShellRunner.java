@@ -51,6 +51,13 @@ public interface EthdShellRunner {
     void removeDataDir(Path dataDir) throws IOException;
 
     /**
+     * Pre-creates a Docker named volume and chowns its backing directory to {@code ownerUid} so the
+     * container process running as that UID can write to it from first boot. Idempotent.
+     */
+    void ensureVolumeOwnership(String composeProjectName, String volumeName, int ownerUid)
+            throws IOException;
+
+    /**
      * Extracts a zstd-compressed tar archive into {@code targetDir}. Creates {@code targetDir} if
      * missing. Existing files in the target may be overwritten by the extraction.
      */

@@ -17,21 +17,26 @@ processus shell sur la machine où tourne le backend. Pré-requis :
 | Connexion réseau | requise au moins une fois pour résoudre le tag eth-docker (fallback cache disque sinon) |
 | `sudo` + règle dédiée | requis pour `chown` du datadir EL vers l'UID du conteneur (cf. § ci-dessous) |
 
-### Règle sudoers pour le `chown` du datadir
+### Règles sudoers pour le `chown` des volumes
 
 Le process EL tourne dans le conteneur eth-docker sous un UID non-root (`10000`
 pour Geth/Erigon, `10002` pour Nethermind, `12000`, …). Sans alignement de
 propriétaire côté hôte, il ne peut pas écrire dans le bind-mount du datadir.
 `ProcessEthdShellRunner.ensureDataDir` délègue donc le `chown` via `sudo -n`.
 
+De même, le volume Docker nommé `ee-secret` (JWT partagé entre EL et CL) est
+créé par défaut avec `root:root`. `ensureVolumeOwnership` pré-crée le volume et
+chown son répertoire backing vers l'UID 10001 (CL) avant le premier `ethd up`.
+
 Pré-requis ops (à provisionner avant de démarrer le backend) — `/etc/sudoers.d/node-provider` :
 
 ```
 <backend-user> ALL=(root) NOPASSWD: /usr/bin/chown -R *\:* /var/lib/platform/nodes/*/data
+<backend-user> ALL=(root) NOPASSWD: /usr/bin/chown -R *\:* /var/lib/docker/volumes/node-*
 ```
 
-Le périmètre est strictement limité à `/var/lib/platform/nodes/*/data` — aucun
-autre `chown` ne peut être lancé via cette règle.
+Le premier périmètre couvre le datadir EL bind-mounté, le second couvre les
+volumes Docker nommés préfixés par le nom de projet Compose (`node-*`).
 
 ## Configuration applicative
 
@@ -100,6 +105,56 @@ Cette invariance est testée pour toutes les combinaisons `(EL, CL)` dans
   centaines de Go selon la chain et le client).
 - Ports : 3 ports dynamiques par node (alloués via `ServerSocket(0)`).
   Aucun pool fixe — l'OS choisit.
+
+## Tuning I/O disque
+
+Le datadir EL est l'élément le plus sollicité du système : sync initial,
+compaction du KV store, et opérations ops concurrentes (extraction du tarball
+template — cf. [`ops/RUNBOOK.md`](../ops/RUNBOOK.md)) peuvent saturer un disque
+unique (`%util` ≈ 95 %, ~150–200 MB/s sustained en écriture séquentielle, cf.
+incident `2026-05-23` dans le `CHANGELOG.md`).
+
+Les leviers ci-dessous se répartissent en deux familles : **host** (que l'ops
+applique librement) et **eth-docker `.env`** (aujourd'hui clobberé à chaque
+`provision` par `EthDockerEnvFile` — bouger ces knobs demande soit un patch
+local hors-platforme, soit une extension du générateur).
+
+### Host (ops, sans modif platform)
+
+| Levier | Effet | Action |
+|---|---|---|
+| `noatime,nodiratime` sur le mount du datadir | ~5–10 % de writes en moins | `/etc/fstab`, mount option du FS hébergeant `/var/lib/platform/nodes` |
+| Disque dédié au datadir EL | supprime la contention avec le tarball template et les autres nodes | bind-mount `{root-dir}` sur un NVMe séparé du disque hébergeant `templates/` |
+| Séparer `templates/` des `nodes/` | un `tar+zstd` template ne perturbe plus le sync d'un node existant | déplacer `/var/lib/platform/templates` sur un autre disque |
+| Migration HDD → NVMe | plafond ~150 MB/s → ~2–7 GB/s | matériel |
+
+### eth-docker `.env` (non exposé côté platform aujourd'hui)
+
+Knobs documentés ici pour mémoire — si on en a besoin en prod il faudra les
+exposer dans `EthDockerEnvFile` (le générateur écrase aujourd'hui tout `.env`
+manuel à chaque `deploy`).
+
+| Knob | Client | Effet |
+|---|---|---|
+| `--state.scheme=path` (PBSS) | Geth | divise la write amplification par ~3–5 vs HBSS legacy |
+| `--cache=<MB>` | Geth | gros cache → moins de flushs → moins de writes |
+| `--db.cache=<bytes>` | Nethermind | idem |
+| `CHECKPOINT_SYNC_URL=<url>` | tous CL | évite l'écriture de l'historique au premier sync |
+| `--prune-blobs=true`, `--blob-prune-margin-epochs=<N>` | Lighthouse | borne la rétention blobs post-Dencun (~1 GB/jour) |
+| Choix EL Erigon/Reth vs Geth | EL | architecture flat-DB → moins de write amp en steady-state ; sync initial intensif mais borné |
+
+### Limites
+
+Aucun de ces leviers ne réduit le volume *intrinsèque* à écrire pendant un
+sync initial (~150–400 Go matérialisés à partir des peers). Ils réduisent
+soit la **write amplification**, soit le **steady-state**, soit la
+**contention** entre workloads concurrents. Pour diagnostiquer en live :
+
+```sh
+iostat -xz 5            # %util et w_await sur le disque suspect
+iotop -aoP              # quel process écrit
+docker exec <el> geth attach --exec 'eth.syncing'   # phase sync ou steady-state
+```
 
 ## Sécurité — validators hors périmètre
 

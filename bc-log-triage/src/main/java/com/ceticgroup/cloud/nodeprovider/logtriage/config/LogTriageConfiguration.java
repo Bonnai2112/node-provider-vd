@@ -31,6 +31,7 @@ import java.time.Duration;
 import org.gitlab4j.api.GitLabApi;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -51,7 +52,10 @@ public class LogTriageConfiguration {
         return Clock.systemUTC();
     }
 
-    @Bean
+    // defaultCandidate=false: garde le bean injectable via @Qualifier("logTriageObjectMapper")
+    // mais l'exclut des resolutions par type ambigues (eg. bc-node-lifecycle qui injecte
+    // un ObjectMapper sans qualifier). Preserve l'isolation entre bounded contexts.
+    @Bean(defaultCandidate = false)
     ObjectMapper logTriageObjectMapper() {
         return new ObjectMapper();
     }
@@ -64,7 +68,7 @@ public class LogTriageConfiguration {
     @Bean
     LogRetrievalPort logRetrievalPort(
             HttpClient logTriageHttpClient,
-            ObjectMapper logTriageObjectMapper,
+            @Qualifier("logTriageObjectMapper") ObjectMapper logTriageObjectMapper,
             LokiProperties properties) {
         return new LokiLogRetrievalAdapter(logTriageHttpClient, logTriageObjectMapper, properties);
     }

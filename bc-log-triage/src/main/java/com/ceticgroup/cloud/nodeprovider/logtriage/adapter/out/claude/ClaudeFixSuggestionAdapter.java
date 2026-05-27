@@ -14,7 +14,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 
-public final class ClaudeFixSuggestionAdapter implements FixSuggestionPort {
+// non-final: les annotations @Retry/@CircuitBreaker (resilience4j) imposent
+// un proxy CGLIB qui doit pouvoir sous-classer cette classe.
+public class ClaudeFixSuggestionAdapter implements FixSuggestionPort {
 
     private static final Logger LOG = LoggerFactory.getLogger(ClaudeFixSuggestionAdapter.class);
 

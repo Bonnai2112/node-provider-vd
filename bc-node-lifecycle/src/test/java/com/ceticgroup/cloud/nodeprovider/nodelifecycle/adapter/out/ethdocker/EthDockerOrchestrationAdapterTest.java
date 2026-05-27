@@ -97,7 +97,7 @@ class EthDockerOrchestrationAdapterTest {
         verify(shell).writeFile(any(), eq("host-ports.yml"), anyString());
         verify(shell).writeFile(any(), eq("shared-network.yml"), anyString());
         verify(networkManager).ensureSharedNetworkExists("node-provider-shared");
-        verify(shell).ensureVolumeOwnership(any(), eq("jwtsecret"), eq(10000));
+        verify(shell).ensureVolumeOwnership(any(), eq("jwtsecret"), eq(10001), eq(10002));
         verify(shell).runEthdUp(any());
 
         DeploymentPayload payload = mapper.readValue(result.payload(), DeploymentPayload.class);
@@ -120,7 +120,7 @@ class EthDockerOrchestrationAdapterTest {
 
         Path expectedDataDir =
                 Path.of("/tmp/platform/nodes", spec.nodeId().value().toString(), "data");
-        verify(shell).ensureDataDir(expectedDataDir, 10000);
+        verify(shell).ensureDataDir(expectedDataDir, 10001, 10002);
         verify(shell).writeFile(any(), eq("el-datadir-bind.yml"), anyString());
 
         DeploymentPayload payload = mapper.readValue(result.payload(), DeploymentPayload.class);
@@ -166,7 +166,7 @@ class EthDockerOrchestrationAdapterTest {
         // Extraction MUST run before chown so the recursive chown covers the restored files.
         org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(shell);
         inOrder.verify(shell).extractTarballZstd(tarball, expectedDataDir);
-        inOrder.verify(shell).ensureDataDir(expectedDataDir, 10000);
+        inOrder.verify(shell).ensureDataDir(expectedDataDir, 10001, 10002);
     }
 
     @Test
@@ -186,7 +186,7 @@ class EthDockerOrchestrationAdapterTest {
         verify(shell, org.mockito.Mockito.never()).extractTarballZstd(any(), any());
         Path expectedDataDir =
                 Path.of("/tmp/platform/nodes", spec.nodeId().value().toString(), "data");
-        verify(shell).ensureDataDir(expectedDataDir, 10000);
+        verify(shell).ensureDataDir(expectedDataDir, 10001, 10002);
     }
 
     @Test
@@ -240,7 +240,10 @@ class EthDockerOrchestrationAdapterTest {
         DeploymentRef result = adapter.deploy(nethermindSpec);
 
         verify(shell, org.mockito.Mockito.never())
-                .ensureDataDir(any(), org.mockito.ArgumentMatchers.anyInt());
+                .ensureDataDir(
+                        any(),
+                        org.mockito.ArgumentMatchers.anyInt(),
+                        org.mockito.ArgumentMatchers.anyInt());
         verify(shell, org.mockito.Mockito.never())
                 .writeFile(any(), eq("el-datadir-bind.yml"), anyString());
 

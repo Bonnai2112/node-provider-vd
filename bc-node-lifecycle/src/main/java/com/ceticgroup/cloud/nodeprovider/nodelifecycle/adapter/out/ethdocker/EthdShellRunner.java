@@ -45,7 +45,7 @@ public interface EthdShellRunner {
      * Creates the host-side EL datadir and chowns it to the eth-docker container UID so the EL
      * process can write to the bind mount. Idempotent.
      */
-    void ensureDataDir(Path dataDir, int ownerUid) throws IOException;
+    void ensureDataDir(Path dataDir, int ownerUid, int ownerGid) throws IOException;
 
     /** Removes the host-side EL datadir recursively. Idempotent. */
     void removeDataDir(Path dataDir) throws IOException;
@@ -54,7 +54,8 @@ public interface EthdShellRunner {
      * Pre-creates a Docker named volume and chowns its backing directory to {@code ownerUid} so the
      * container process running as that UID can write to it from first boot. Idempotent.
      */
-    void ensureVolumeOwnership(String composeProjectName, String volumeName, int ownerUid)
+    void ensureVolumeOwnership(
+            String composeProjectName, String volumeName, int ownerUid, int ownerGid)
             throws IOException;
 
     /**

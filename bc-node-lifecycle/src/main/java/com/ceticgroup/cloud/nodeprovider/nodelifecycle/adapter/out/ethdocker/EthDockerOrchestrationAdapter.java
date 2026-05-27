@@ -50,9 +50,9 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
         this.mapper = mapper;
     }
 
-    // Standard eth-docker container UID (services run as the `ethdocker` user). We chown the
-    // host-side bind-mounted datadir to this UID so the EL process can write to it.
-    private static final int ETH_DOCKER_UID = 10000;
+    // UID/GID of the `geth` user inside the eth-docker EL image (geth:local).
+    private static final int ETH_DOCKER_UID = 10001;
+    private static final int ETH_DOCKER_GID = 10002;
 
     private static final String EE_SECRET_VOLUME = "jwtsecret";
 
@@ -107,14 +107,15 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
                 }
                 // Single chown -R after the optional extraction so the EL container UID can write
                 // to the bind mount whether or not a template was applied.
-                shell.ensureDataDir(elDataHostPath, ETH_DOCKER_UID);
+                shell.ensureDataDir(elDataHostPath, ETH_DOCKER_UID, ETH_DOCKER_GID);
                 shell.writeFile(
                         workdir, EthDockerEnvFile.EL_DATADIR_BIND_OVERRIDE_FILE, elBindYaml.get());
             }
 
             networkManager.ensureSharedNetworkExists(EthDockerEnvFile.SHARED_NETWORK_NAME);
 
-            shell.ensureVolumeOwnership(projectName, EE_SECRET_VOLUME, ETH_DOCKER_UID);
+            shell.ensureVolumeOwnership(
+                    projectName, EE_SECRET_VOLUME, ETH_DOCKER_UID, ETH_DOCKER_GID);
             shell.runEthdUp(workdir);
 
             DeploymentPayload payload =

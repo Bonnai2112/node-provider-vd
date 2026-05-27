@@ -168,7 +168,7 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
     }
 
     @Override
-    public void ensureDataDir(Path dataDir, int ownerUid) throws IOException {
+    public void ensureDataDir(Path dataDir, int ownerUid, int ownerGid) throws IOException {
         Files.createDirectories(dataDir);
         // eth-docker images run the EL process as a non-root UID (10000 for Geth/Erigon/...,
         // 10002 for Nethermind, 12000, ...) so the container can't write to the bind-mounted
@@ -185,7 +185,7 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
                 "-n",
                 "/usr/bin/chown",
                 "-R",
-                ownerUid + ":" + ownerUid,
+                ownerUid + ":" + ownerGid,
                 dataDir.toString());
     }
 
@@ -199,7 +199,7 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
         if (!Files.exists(nodeRoot)) {
             return;
         }
-        // The data dir is chowned to UID 10000 at deploy time (see ensureDataDir), so a
+        // The data dir is chowned to the eth-docker UID at deploy time (see ensureDataDir), so a
         // best-effort Files.walk delete from the backend user silently fails on those
         // entries. We delegate to root via sudo to make the cleanup actually effective.
         // Required sudoers entry:
@@ -215,7 +215,8 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
     }
 
     @Override
-    public void ensureVolumeOwnership(String composeProjectName, String volumeName, int ownerUid)
+    public void ensureVolumeOwnership(
+            String composeProjectName, String volumeName, int ownerUid, int ownerGid)
             throws IOException {
         String fullName = composeProjectName + "_" + volumeName;
         run(Path.of("/tmp"), null, "docker", "volume", "create", fullName);
@@ -232,7 +233,7 @@ public class ProcessEthdShellRunner implements EthdShellRunner {
                 "-n",
                 "/usr/bin/chown",
                 "-R",
-                ownerUid + ":" + ownerUid,
+                ownerUid + ":" + ownerGid,
                 mountpoint);
     }
 

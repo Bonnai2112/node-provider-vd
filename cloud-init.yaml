@@ -117,6 +117,20 @@ bootcmd:
 
 write_files:
   # ============================================================
+  # Sudoers — règles restreintes pour le backend node-provider
+  # ============================================================
+  - path: /etc/sudoers.d/node-provider
+    permissions: '0440'
+    owner: root:root
+    content: |
+      # chown du datadir EL bind-mounté (UID 10000 Geth/Erigon, 10002 Nethermind, …)
+      web3 ALL=(root) NOPASSWD: /usr/bin/chown -R *\:* /var/lib/platform/nodes/*/data
+      # chown des volumes Docker nommés (ee-secret → UID 10001 CL)
+      web3 ALL=(root) NOPASSWD: /usr/bin/chown -R *\:* /var/lib/docker/volumes/node-*
+      # rm récursif du répertoire nœud complet au tearDown
+      web3 ALL=(root) NOPASSWD: /bin/rm -rf /var/lib/platform/nodes/*
+
+  # ============================================================
   # Script principal — setup Docker, SDKMAN, Java, NVM, Node
   # ============================================================
   - path: /usr/local/sbin/setup-data-disk.sh

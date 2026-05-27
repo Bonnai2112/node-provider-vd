@@ -72,7 +72,12 @@ systemctl list-timers produce-el-template@*.timer
 
 - Pendant le run : conteneur `execution` du nœud frozen stoppé, le CL continue.
   Downtime EL ≈ durée de `tar+zstd` (~5–20 min selon chaindata, niveau zstd,
-  matériel).
+  matériel). Le `tar+zstd` sature le disque source (`%util` ≈ 95 %,
+  ~130–150 MB/s) : si `templates/` et `nodes/` partagent le même disque, les
+  autres nodes vus depuis cet hôte subiront un ralentissement I/O pendant la
+  fenêtre. Cf. § *Tuning I/O disque* dans
+  [`bc-node-lifecycle/README.md`](../bc-node-lifecycle/README.md) pour les
+  options de séparation de disques.
 - Si `tar` échoue, le `.tmp` est nettoyé et le tarball précédent reste en place
   (rename atomique non déclenché). Le conteneur EL est toujours redémarré par
   un trap shell.

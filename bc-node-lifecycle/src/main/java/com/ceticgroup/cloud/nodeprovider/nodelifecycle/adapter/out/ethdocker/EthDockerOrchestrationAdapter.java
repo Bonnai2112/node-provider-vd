@@ -54,7 +54,7 @@ public class EthDockerOrchestrationAdapter implements NodeOrchestrationPort {
     // host-side bind-mounted datadir to this UID so the EL process can write to it.
     private static final int ETH_DOCKER_UID = 10000;
 
-    private static final String EE_SECRET_VOLUME = "ee-secret";
+    private static final String EE_SECRET_VOLUME = "jwtsecret";
 
     @Override
     public DeploymentRef deploy(NodeSpec spec) {

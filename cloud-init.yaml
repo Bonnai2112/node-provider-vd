@@ -125,7 +125,7 @@ write_files:
     content: |
       # chown du datadir EL bind-mounté (UID 10000 Geth/Erigon, 10002 Nethermind, …)
       web3 ALL=(root) NOPASSWD: /usr/bin/chown -R *\:* /var/lib/platform/nodes/*/data
-      # chown des volumes Docker nommés (ee-secret → UID 10001 CL)
+      # chown des volumes Docker nommés (jwtsecret → UID 10000 EL)
       web3 ALL=(root) NOPASSWD: /usr/bin/chown -R *\:* /var/lib/docker/volumes/node-*
       # rm récursif du répertoire nœud complet au tearDown
       web3 ALL=(root) NOPASSWD: /bin/rm -rf /var/lib/platform/nodes/*

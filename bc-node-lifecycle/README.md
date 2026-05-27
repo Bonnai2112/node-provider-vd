@@ -26,7 +26,8 @@ propriétaire côté hôte, il ne peut pas écrire dans le bind-mount du datadir
 
 De même, le volume Docker nommé `ee-secret` (JWT partagé entre EL et CL) est
 créé par défaut avec `root:root`. `ensureVolumeOwnership` pré-crée le volume et
-chown son répertoire backing vers l'UID 10001 (CL) avant le premier `ethd up`.
+chown son répertoire backing vers l'UID 10000 (EL — c'est Geth qui génère le
+JWT au premier boot) avant le premier `ethd up`.
 
 Pré-requis ops (à provisionner avant de démarrer le backend) — `/etc/sudoers.d/node-provider` :
 
